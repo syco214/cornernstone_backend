@@ -1,0 +1,9 @@
+.history
+/venv
+.vite/
+*__pycache__
+.env
+node_modules/
+*.pyc
+documents/
+/nginx
