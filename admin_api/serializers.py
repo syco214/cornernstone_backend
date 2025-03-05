@@ -1,6 +1,8 @@
 from rest_framework import serializers
-from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, get_user_model
+from .models import CustomUser
+
+User = get_user_model()
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
@@ -11,3 +13,43 @@ class LoginSerializer(serializers.Serializer):
         if user and user.is_active:
             return user
         raise serializers.ValidationError('Incorrect credentials')
+    
+class SidebarUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'role', 'user_access']
+        read_only_fields = ['id', 'first_name', 'last_name', 'role', 'user_access']
+
+class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=False)
+    
+    class Meta:
+        model = CustomUser
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 
+            'role', 'user_access', 'password', 
+            'is_active', 'date_joined'
+        ]
+        read_only_fields = ['id', 'date_joined']
+    
+    def create(self, validated_data):
+        password = validated_data.pop('password', None)
+        user = CustomUser(**validated_data)
+        if password:
+            user.set_password(password)
+        user.save()
+        return user
+    
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        
+        # Update all other fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Handle password separately
+        if password:
+            instance.set_password(password)
+        
+        instance.save()
+        return instance
