@@ -189,4 +189,4 @@ class UserView(APIView, PageNumberPagination):
         return Response({
             'success': True,
             'data': None
-        }, status=status.HTTP_204_NO_CONTENT)
+        }, status=status.HTTP_200_OK)

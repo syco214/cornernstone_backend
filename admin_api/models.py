@@ -5,7 +5,7 @@ from django.contrib.postgres.fields import ArrayField
 # Define access options as simple constants
 USER_ACCESS_OPTIONS = [
     'inventory',
-    'quoatations',
+    'quotations',
     'sales_orders',
     'importation',
     'warehouse',
