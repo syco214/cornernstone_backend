@@ -47,3 +47,19 @@ class CustomUser(AbstractUser):
     
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.username})"
+
+class Brand(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    made_in = models.TextField(blank=True, null=True)
+    show_made_in = models.BooleanField(default=True)
+    remarks = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'brand'
+        verbose_name_plural = 'brands'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name

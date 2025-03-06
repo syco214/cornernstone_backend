@@ -9,8 +9,8 @@ from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
-from .models import CustomUser, USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS
-from .serializers import UserSerializer, SidebarUserSerializer
+from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand
+from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer
 
 # Create your views here.
 
@@ -186,6 +186,124 @@ class UserView(APIView, PageNumberPagination):
     def delete(self, request, pk):
         user = get_object_or_404(CustomUser, pk=pk)
         user.delete()
+        return Response({
+            'success': True,
+            'data': None
+        }, status=status.HTTP_200_OK)
+
+class BrandView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        # If pk is provided, return a single brand
+        if pk:
+            brand = get_object_or_404(Brand, pk=pk)
+            serializer = BrandSerializer(brand)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        # Otherwise, return a list of brands
+        # Get search parameters
+        search = request.query_params.get('search', '')
+        sort_by = request.query_params.get('sort_by', 'name')
+        sort_direction = request.query_params.get('sort_direction', 'asc')
+
+        # Query brands
+        brands = Brand.objects.all()
+
+        # Apply search filter
+        if search:
+            brands = brands.filter(
+                Q(name__icontains=search) |
+                Q(made_in__icontains=search) |
+                Q(remarks__icontains=search)
+            )
+
+        # Apply sorting
+        sort_prefix = '-' if sort_direction == 'desc' else ''
+        brands = brands.order_by(f'{sort_prefix}{sort_by}')
+
+        # Pagination is handled by the mixin
+        page = self.paginate_queryset(brands, request)
+        if page is not None:
+            serializer = BrandSerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            # Restructure to match our API format
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+
+        # Fallback if pagination fails
+        serializer = BrandSerializer(brands, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+
+    def post(self, request):
+        serializer = BrandSerializer(data=request.data)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    # Convert list of errors to single string
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request, pk):
+        brand = get_object_or_404(Brand, pk=pk)
+        serializer = BrandSerializer(brand, data=request.data, partial=True)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        brand = get_object_or_404(Brand, pk=pk)
+        brand.delete()
         return Response({
             'success': True,
             'data': None

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate, get_user_model
-from .models import CustomUser
+from .models import CustomUser, Brand
 
 User = get_user_model()
 
@@ -53,3 +53,9 @@ class UserSerializer(serializers.ModelSerializer):
         
         instance.save()
         return instance
+    
+class BrandSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Brand
+        fields = ['id', 'name', 'made_in', 'show_made_in', 'remarks', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
