@@ -19,6 +19,7 @@ USER_ACCESS_OPTIONS = [
 USER_ROLE_OPTIONS = [
     'admin',
     'user',
+    'supervisor'
 ]
 
 class CustomUser(AbstractUser):
@@ -63,3 +64,35 @@ class Brand(models.Model):
 
     def __str__(self):
         return self.name
+
+class Category(models.Model):
+    name = models.CharField(max_length=100)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'category'
+        verbose_name_plural = 'categories'
+        ordering = ['name']
+        unique_together = [['name', 'parent']]
+
+    def __str__(self):
+        if self.parent:
+            return f"{self.parent} > {self.name}"
+        return self.name
+    
+    @property
+    def level(self):
+        level = 0
+        parent = self.parent
+        while parent:
+            level += 1
+            parent = parent.parent
+        return level
+    
+    @property
+    def full_path(self):
+        if not self.parent:
+            return self.name
+        return f"{self.parent.full_path} > {self.name}"

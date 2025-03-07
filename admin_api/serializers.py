@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate, get_user_model
-from .models import CustomUser, Brand
+from .models import CustomUser, Brand, Category
 
 User = get_user_model()
 
@@ -59,3 +59,26 @@ class BrandSerializer(serializers.ModelSerializer):
         model = Brand
         fields = ['id', 'name', 'made_in', 'show_made_in', 'remarks', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+class CategorySerializer(serializers.ModelSerializer):
+    level = serializers.IntegerField(read_only=True)
+    full_path = serializers.CharField(read_only=True)
+    
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'parent', 'level', 'full_path', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'level', 'full_path']
+
+class CategoryTreeSerializer(serializers.ModelSerializer):
+    children = serializers.SerializerMethodField()
+    level = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'level', 'children', 'created_at', 'updated_at']
+    
+    def get_children(self, obj):
+        children = Category.objects.filter(parent=obj)
+        if not children:
+            return []
+        return CategoryTreeSerializer(children, many=True).data

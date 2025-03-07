@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginView, UserView, SidebarView, BrandView
+from .views import LoginView, UserView, SidebarView, BrandView, CategoryView
 
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
@@ -8,4 +8,6 @@ urlpatterns = [
     path('users/<int:pk>/', UserView.as_view(), name='user-detail'),
     path('brands/', BrandView.as_view(), name='brands'),
     path('brands/<int:pk>/', BrandView.as_view(), name='brand-detail'),
+    path('categories/', CategoryView.as_view(), name='categories'),
+    path('categories/<int:pk>/', CategoryView.as_view(), name='category-detail'),
 ]
