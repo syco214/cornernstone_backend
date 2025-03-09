@@ -125,3 +125,76 @@ class Shelf(models.Model):
 
     def __str__(self):
         return f"{self.warehouse.name} > Shelf #{self.number} ({self.info})"
+    
+class Supplier(models.Model):
+    SUPPLIER_TYPES = [
+        ('local', 'Local'),
+        ('foreign', 'Foreign'),
+    ]
+    
+    name = models.CharField(max_length=100)
+    registered_name = models.CharField(max_length=100)
+    supplier_type = models.CharField(max_length=10, choices=SUPPLIER_TYPES)
+    currency = models.CharField(max_length=3)  # ISO currency code (e.g., USD, EUR)
+    phone_number = models.CharField(max_length=20)
+    email = models.EmailField()
+    inco_terms = models.TextField(blank=True)
+    remarks = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = [['name', 'registered_name']]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_supplier_type_display()})"
+
+class SupplierAddress(models.Model):
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='addresses')
+    description = models.CharField(max_length=100)  # e.g., "Headquarters", "Warehouse", etc.
+    address = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['description']
+        verbose_name_plural = 'supplier addresses'
+
+    def __str__(self):
+        return f"{self.supplier.name} - {self.description}"
+
+class SupplierContact(models.Model):
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='contacts')
+    contact_person = models.CharField(max_length=100)
+    position = models.CharField(max_length=100)
+    department = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['contact_person']
+
+    def __str__(self):
+        return f"{self.supplier.name} - {self.contact_person} ({self.position})"
+
+class SupplierPaymentTerm(models.Model):
+    supplier = models.OneToOneField(Supplier, on_delete=models.CASCADE, related_name='payment_term')
+    name = models.CharField(max_length=100)
+    credit_limit = models.DecimalField(max_digits=15, decimal_places=2)
+    
+    # Stock payment terms
+    stock_payment_terms = models.CharField(max_length=100)
+    stock_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    stock_terms_days = models.PositiveIntegerField()
+    
+    # Import payment terms
+    import_payment_terms = models.CharField(max_length=100)
+    import_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    import_terms_days = models.PositiveIntegerField()
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.supplier.name} - {self.name}"
