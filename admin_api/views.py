@@ -9,8 +9,8 @@ from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
-from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category
-from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer
+from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse
+from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer
 
 # Create your views here.
 
@@ -344,8 +344,7 @@ class CategoryView(APIView, PageNumberPagination):
         # Apply search filter
         if search:
             categories = categories.filter(
-                Q(name__icontains=search) |
-                Q(remarks__icontains=search)
+                Q(name__icontains=search)
             )
 
         # Apply sorting
@@ -485,3 +484,118 @@ class CategoryView(APIView, PageNumberPagination):
             descendants.extend(self._get_all_descendants(child))
         
         return descendants
+
+class WarehouseView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        # If pk is provided, return a single warehouse with its shelves
+        if pk:
+            warehouse = get_object_or_404(Warehouse, pk=pk)
+            serializer = WarehouseSerializer(warehouse)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        # Get query parameters
+        search = request.query_params.get('search', '')
+        sort_by = request.query_params.get('sort_by', 'name')
+        sort_direction = request.query_params.get('sort_direction', 'asc')
+        
+        # Query warehouses
+        warehouses = Warehouse.objects.all()
+
+        # Apply search filter
+        if search:
+            warehouses = warehouses.filter(
+                Q(name__icontains=search) |
+                Q(city__icontains=search) |
+                Q(address__icontains=search)
+            )
+
+        # Apply sorting
+        sort_prefix = '-' if sort_direction == 'desc' else ''
+        warehouses = warehouses.order_by(f'{sort_prefix}{sort_by}')
+        
+        # Pagination
+        page = self.paginate_queryset(warehouses, request)
+        if page is not None:
+            serializer = WarehouseSerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+
+        # Fallback if pagination fails
+        serializer = WarehouseSerializer(warehouses, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+
+    def post(self, request):
+        serializer = WarehouseCreateUpdateSerializer(data=request.data)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request, pk):
+        warehouse = get_object_or_404(Warehouse, pk=pk)
+        serializer = WarehouseCreateUpdateSerializer(warehouse, data=request.data, partial=True)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        warehouse = get_object_or_404(Warehouse, pk=pk)
+        warehouse.delete()
+        return Response({
+            'success': True,
+            'data': None
+        }, status=status.HTTP_200_OK)

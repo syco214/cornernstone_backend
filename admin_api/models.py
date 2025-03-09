@@ -96,3 +96,32 @@ class Category(models.Model):
         if not self.parent:
             return self.name
         return f"{self.parent.full_path} > {self.name}"
+    
+class Warehouse(models.Model):
+    name = models.CharField(max_length=100)
+    address = models.TextField()
+    city = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = [['name', 'city']]
+
+    def __str__(self):
+        return f"{self.name} ({self.city})"
+
+class Shelf(models.Model):
+    number = models.CharField(max_length=50)
+    info = models.CharField(max_length=255)
+    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='shelves')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['number']
+        unique_together = [['number', 'warehouse']]
+        verbose_name_plural = 'shelves'
+
+    def __str__(self):
+        return f"{self.warehouse.name} > Shelf #{self.number} ({self.info})"

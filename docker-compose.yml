@@ -55,6 +55,7 @@ services:
   test:
     build: .
     command: python manage.py test tests
+    profiles: ["test"]
     volumes:
       - .:/app
     environment:
