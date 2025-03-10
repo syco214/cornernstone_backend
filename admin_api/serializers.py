@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate, get_user_model
-from .models import CustomUser, Brand, Category, Warehouse, Shelf, Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm, ParentCompany, ParentCompanyPaymentTerm, Customer
+from .models import CustomUser, Brand, Category, Warehouse, Shelf, Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm, ParentCompany, ParentCompanyPaymentTerm, Customer, CustomerAddress, CustomerContact, CustomerPaymentTerm
 
 User = get_user_model()
 
@@ -373,3 +373,179 @@ class ParentCompanyCreateUpdateSerializer(serializers.ModelSerializer):
                 ParentCompanyPaymentTerm.objects.create(parent_company=instance, **payment_term_data)
             
         return instance
+
+class CustomerAddressSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+    
+    class Meta:
+        model = CustomerAddress
+        fields = ['id', 'delivery_address', 'delivery_schedule']
+        read_only_fields = ['id']
+
+class CustomerContactSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+    
+    class Meta:
+        model = CustomerContact
+        fields = ['id', 'contact_person', 'position', 'department']
+        read_only_fields = ['id']
+
+class CustomerPaymentTermSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+    
+    class Meta:
+        model = CustomerPaymentTerm
+        fields = [
+            'id', 'name', 'credit_limit', 
+            'stock_payment_terms', 'stock_dp_percentage', 'stock_terms_days',
+            'import_payment_terms', 'import_dp_percentage', 'import_terms_days'
+        ]
+        read_only_fields = ['id']
+
+class CustomerSerializer(serializers.ModelSerializer):
+    addresses = CustomerAddressSerializer(many=True, read_only=True)
+    contacts = CustomerContactSerializer(many=True, read_only=True)
+    payment_term = CustomerPaymentTermSerializer(read_only=True)
+    parent_company_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Customer
+        fields = [
+            'id', 'name', 'registered_name', 'tin', 'phone_number', 
+            'status', 'has_parent', 'parent_company', 'parent_company_name',
+            'company_address', 'city', 'vat_type',
+            'addresses', 'contacts', 'payment_term',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'parent_company_name']
+    
+    def get_parent_company_name(self, obj):
+        if obj.parent_company:
+            return obj.parent_company.name
+        return None
+
+class CustomerCreateUpdateSerializer(serializers.ModelSerializer):
+    addresses = CustomerAddressSerializer(many=True, required=False)
+    contacts = CustomerContactSerializer(many=True, required=False)
+    payment_term = CustomerPaymentTermSerializer(required=False)
+    
+    class Meta:
+        model = Customer
+        fields = [
+            'id', 'name', 'registered_name', 'tin', 'phone_number', 
+            'status', 'has_parent', 'parent_company',
+            'company_address', 'city', 'vat_type',
+            'addresses', 'contacts', 'payment_term',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def validate(self, data):
+        # Validate that parent_company is provided if has_parent is True
+        if data.get('has_parent', False) and not data.get('parent_company'):
+            raise serializers.ValidationError(
+                {"parent_company": "Parent company must be specified when has_parent is True."}
+            )
+        
+        # Ensure parent_company is None if has_parent is False
+        if 'has_parent' in data and not data.get('has_parent', False):
+            data['parent_company'] = None
+            
+        return data
+    
+    def create(self, validated_data):
+        addresses_data = validated_data.pop('addresses', [])
+        contacts_data = validated_data.pop('contacts', [])
+        payment_term_data = validated_data.pop('payment_term', None)
+        
+        customer = Customer.objects.create(**validated_data)
+        
+        # Create addresses
+        for address_data in addresses_data:
+            CustomerAddress.objects.create(customer=customer, **address_data)
+        
+        # Create contacts
+        for contact_data in contacts_data:
+            CustomerContact.objects.create(customer=customer, **contact_data)
+        
+        # Create payment term if provided
+        if payment_term_data:
+            CustomerPaymentTerm.objects.create(customer=customer, **payment_term_data)
+            
+        return customer
+    
+    def update(self, instance, validated_data):
+        addresses_data = validated_data.pop('addresses', None)
+        contacts_data = validated_data.pop('contacts', None)
+        payment_term_data = validated_data.pop('payment_term', None)
+        
+        # Update customer fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update addresses if provided
+        if addresses_data is not None:
+            self._update_nested_objects(
+                instance.addresses, 
+                addresses_data, 
+                CustomerAddress, 
+                'customer'
+            )
+        
+        # Update contacts if provided
+        if contacts_data is not None:
+            self._update_nested_objects(
+                instance.contacts, 
+                contacts_data, 
+                CustomerContact, 
+                'customer'
+            )
+        
+        # Update payment term if provided
+        if payment_term_data is not None:
+            try:
+                payment_term = instance.payment_term
+                for attr, value in payment_term_data.items():
+                    setattr(payment_term, attr, value)
+                payment_term.save()
+            except CustomerPaymentTerm.DoesNotExist:
+                CustomerPaymentTerm.objects.create(customer=instance, **payment_term_data)
+            
+        return instance
+    
+    def _update_nested_objects(self, queryset, data_list, model_class, parent_field_name):
+        """
+        Helper method to update nested objects (addresses, contacts)
+        """
+        # Get existing IDs
+        existing_ids = set(queryset.values_list('id', flat=True))
+        updated_ids = set()
+        
+        # Create or update objects
+        for data in data_list:
+            obj_id = data.get('id')
+            
+            if obj_id:
+                # Update existing object
+                try:
+                    obj = queryset.get(id=obj_id)
+                    for attr, value in data.items():
+                        if attr != 'id':
+                            setattr(obj, attr, value)
+                    obj.save()
+                    updated_ids.add(obj_id)
+                except model_class.DoesNotExist:
+                    # If ID doesn't exist, create new object
+                    kwargs = {parent_field_name: queryset.instance, **{k: v for k, v in data.items() if k != 'id'}}
+                    obj = model_class.objects.create(**kwargs)
+                    updated_ids.add(obj.id)
+            else:
+                # Create new object
+                kwargs = {parent_field_name: queryset.instance, **data}
+                obj = model_class.objects.create(**kwargs)
+                updated_ids.add(obj.id)
+        
+        # Delete objects that weren't updated
+        objects_to_delete = existing_ids - updated_ids
+        queryset.filter(id__in=objects_to_delete).delete()

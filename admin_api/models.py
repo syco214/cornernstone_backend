@@ -233,7 +233,17 @@ class ParentCompanyPaymentTerm(models.Model):
         return f"{self.parent_company.name} - {self.name}"
 
 class Customer(models.Model):
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+    ]
+    
     name = models.CharField(max_length=100)
+    registered_name = models.CharField(max_length=100)
+    tin = models.CharField(max_length=20, blank=True)
+    phone_number = models.CharField(max_length=20)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+    has_parent = models.BooleanField(default=False)
     parent_company = models.ForeignKey(
         ParentCompany, 
         on_delete=models.SET_NULL, 
@@ -241,15 +251,64 @@ class Customer(models.Model):
         null=True, 
         blank=True
     )
-    # Basic placeholder fields
-    address = models.TextField(blank=True)
-    phone_number = models.CharField(max_length=50, blank=True)
-    email = models.EmailField(blank=True)
+    company_address = models.TextField()
+    city = models.CharField(max_length=100)
+    vat_type = models.CharField(max_length=50, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['name']
+        unique_together = [['name', 'registered_name']]
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.get_status_display()})"
+
+class CustomerAddress(models.Model):
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='addresses')
+    delivery_address = models.TextField()
+    delivery_schedule = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['delivery_address']
+        verbose_name_plural = 'customer addresses'
+
+    def __str__(self):
+        return f"{self.customer.name} - {self.delivery_address}"
+
+class CustomerContact(models.Model):
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='contacts')
+    contact_person = models.CharField(max_length=100)
+    position = models.CharField(max_length=100)
+    department = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['contact_person']
+
+    def __str__(self):
+        return f"{self.customer.name} - {self.contact_person} ({self.position})"
+
+class CustomerPaymentTerm(models.Model):
+    customer = models.OneToOneField(Customer, on_delete=models.CASCADE, related_name='payment_term')
+    name = models.CharField(max_length=100)
+    credit_limit = models.DecimalField(max_digits=15, decimal_places=2)
+    
+    # Stock payment terms
+    stock_payment_terms = models.CharField(max_length=100)
+    stock_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    stock_terms_days = models.PositiveIntegerField()
+    
+    # Import payment terms
+    import_payment_terms = models.CharField(max_length=100)
+    import_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    import_terms_days = models.PositiveIntegerField()
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.customer.name} - {self.name}"

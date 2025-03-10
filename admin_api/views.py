@@ -9,8 +9,8 @@ from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
-from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany
-from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer
+from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer
+from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer, CustomerSerializer, CustomerCreateUpdateSerializer
 
 # Create your views here.
 
@@ -828,6 +828,136 @@ class ParentCompanyView(APIView, PageNumberPagination):
     def delete(self, request, pk):
         parent_company = get_object_or_404(ParentCompany, pk=pk)
         parent_company.delete()
+        return Response({
+            'success': True,
+            'data': None
+        }, status=status.HTTP_200_OK)
+
+class CustomerView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        # If pk is provided, return a single customer with all related data
+        if pk:
+            customer = get_object_or_404(Customer, pk=pk)
+            serializer = CustomerSerializer(customer)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        # Get query parameters
+        search = request.query_params.get('search', '')
+        sort_by = request.query_params.get('sort_by', 'name')
+        sort_direction = request.query_params.get('sort_direction', 'asc')
+        status = request.query_params.get('status', '')
+        parent_company_id = request.query_params.get('parent_company_id', '')
+        
+        # Query customers
+        customers = Customer.objects.all()
+
+        # Apply search filter
+        if search:
+            customers = customers.filter(
+                Q(name__icontains=search) |
+                Q(registered_name__icontains=search) |
+                Q(tin__icontains=search) |
+                Q(city__icontains=search)
+            )
+        
+        # Filter by status if provided
+        if status and status in dict(Customer.STATUS_CHOICES):
+            customers = customers.filter(status=status)
+            
+        # Filter by parent company if provided
+        if parent_company_id:
+            try:
+                parent_company_id = int(parent_company_id)
+                customers = customers.filter(parent_company_id=parent_company_id)
+            except ValueError:
+                pass
+
+        # Apply sorting
+        sort_prefix = '-' if sort_direction == 'desc' else ''
+        customers = customers.order_by(f'{sort_prefix}{sort_by}')
+        
+        # Pagination
+        page = self.paginate_queryset(customers, request)
+        if page is not None:
+            serializer = CustomerSerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+
+        # Fallback if pagination fails
+        serializer = CustomerSerializer(customers, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+
+    def post(self, request):
+        serializer = CustomerCreateUpdateSerializer(data=request.data)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request, pk):
+        customer = get_object_or_404(Customer, pk=pk)
+        serializer = CustomerCreateUpdateSerializer(customer, data=request.data, partial=True)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        customer = get_object_or_404(Customer, pk=pk)
+        customer.delete()
         return Response({
             'success': True,
             'data': None
