@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate, get_user_model
-from .models import CustomUser, Brand, Category, Warehouse, Shelf, Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm
+from .models import CustomUser, Brand, Category, Warehouse, Shelf, Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm, ParentCompany, ParentCompanyPaymentTerm, Customer
 
 User = get_user_model()
 
@@ -312,3 +312,64 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
         # Delete objects that weren't updated
         objects_to_delete = existing_ids - updated_ids
         queryset.filter(id__in=objects_to_delete).delete()
+
+class ParentCompanyPaymentTermSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParentCompanyPaymentTerm
+        fields = [
+            'id', 'name', 'credit_limit', 
+            'stock_payment_terms', 'stock_dp_percentage', 'stock_terms_days',
+            'import_payment_terms', 'import_dp_percentage', 'import_terms_days'
+        ]
+        read_only_fields = ['id']
+
+class ParentCompanySerializer(serializers.ModelSerializer):
+    payment_term = ParentCompanyPaymentTermSerializer(read_only=True)
+    customers = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ParentCompany
+        fields = ['id', 'name', 'consolidate_payment_terms', 'payment_term', 'customers', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_customers(self, obj):
+        customers = Customer.objects.filter(parent_company=obj)
+        return [{'id': customer.id, 'name': customer.name} for customer in customers]
+
+class ParentCompanyCreateUpdateSerializer(serializers.ModelSerializer):
+    payment_term = ParentCompanyPaymentTermSerializer(required=False)
+    
+    class Meta:
+        model = ParentCompany
+        fields = ['id', 'name', 'consolidate_payment_terms', 'payment_term', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def create(self, validated_data):
+        payment_term_data = validated_data.pop('payment_term', None)
+        parent_company = ParentCompany.objects.create(**validated_data)
+        
+        # Create payment term if provided
+        if payment_term_data:
+            ParentCompanyPaymentTerm.objects.create(parent_company=parent_company, **payment_term_data)
+            
+        return parent_company
+    
+    def update(self, instance, validated_data):
+        payment_term_data = validated_data.pop('payment_term', None)
+        
+        # Update parent company fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update payment term if provided
+        if payment_term_data is not None:
+            try:
+                payment_term = instance.payment_term
+                for attr, value in payment_term_data.items():
+                    setattr(payment_term, attr, value)
+                payment_term.save()
+            except ParentCompanyPaymentTerm.DoesNotExist:
+                ParentCompanyPaymentTerm.objects.create(parent_company=instance, **payment_term_data)
+            
+        return instance

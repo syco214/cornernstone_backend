@@ -198,3 +198,58 @@ class SupplierPaymentTerm(models.Model):
 
     def __str__(self):
         return f"{self.supplier.name} - {self.name}"
+
+class ParentCompany(models.Model):
+    name = models.CharField(max_length=100)
+    consolidate_payment_terms = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'parent companies'
+
+    def __str__(self):
+        return self.name
+
+class ParentCompanyPaymentTerm(models.Model):
+    parent_company = models.OneToOneField(
+        ParentCompany, 
+        on_delete=models.CASCADE, 
+        related_name='payment_term'
+    )
+    name = models.CharField(max_length=100)
+    credit_limit = models.DecimalField(max_digits=12, decimal_places=2)
+    stock_payment_terms = models.CharField(max_length=100)
+    stock_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    stock_terms_days = models.PositiveIntegerField()
+    import_payment_terms = models.CharField(max_length=100)
+    import_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    import_terms_days = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.parent_company.name} - {self.name}"
+
+class Customer(models.Model):
+    name = models.CharField(max_length=100)
+    parent_company = models.ForeignKey(
+        ParentCompany, 
+        on_delete=models.SET_NULL, 
+        related_name='customer_set',
+        null=True, 
+        blank=True
+    )
+    # Basic placeholder fields
+    address = models.TextField(blank=True)
+    phone_number = models.CharField(max_length=50, blank=True)
+    email = models.EmailField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name

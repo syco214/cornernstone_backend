@@ -9,8 +9,8 @@ from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
-from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier
-from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer
+from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany
+from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer
 
 # Create your views here.
 
@@ -715,6 +715,119 @@ class SupplierView(APIView, PageNumberPagination):
     def delete(self, request, pk):
         supplier = get_object_or_404(Supplier, pk=pk)
         supplier.delete()
+        return Response({
+            'success': True,
+            'data': None
+        }, status=status.HTTP_200_OK)
+
+class ParentCompanyView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        # If pk is provided, return a single parent company with its payment terms and customers
+        if pk:
+            parent_company = get_object_or_404(ParentCompany, pk=pk)
+            serializer = ParentCompanySerializer(parent_company)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        # Get query parameters
+        search = request.query_params.get('search', '')
+        sort_by = request.query_params.get('sort_by', 'name')
+        sort_direction = request.query_params.get('sort_direction', 'asc')
+        
+        # Query parent companies
+        parent_companies = ParentCompany.objects.all()
+
+        # Apply search filter
+        if search:
+            parent_companies = parent_companies.filter(
+                Q(name__icontains=search)
+            )
+
+        # Apply sorting
+        sort_prefix = '-' if sort_direction == 'desc' else ''
+        parent_companies = parent_companies.order_by(f'{sort_prefix}{sort_by}')
+        
+        # Pagination
+        page = self.paginate_queryset(parent_companies, request)
+        if page is not None:
+            serializer = ParentCompanySerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+
+        # Fallback if pagination fails
+        serializer = ParentCompanySerializer(parent_companies, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+
+    def post(self, request):
+        serializer = ParentCompanyCreateUpdateSerializer(data=request.data)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request, pk):
+        parent_company = get_object_or_404(ParentCompany, pk=pk)
+        serializer = ParentCompanyCreateUpdateSerializer(parent_company, data=request.data, partial=True)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        parent_company = get_object_or_404(ParentCompany, pk=pk)
+        parent_company.delete()
         return Response({
             'success': True,
             'data': None
