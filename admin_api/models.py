@@ -360,3 +360,50 @@ class BrokerContact(models.Model):
 
     def __str__(self):
         return f"{self.broker.company_name} - {self.contact_person} ({self.position})"
+
+class Forwarder(models.Model):
+    PAYMENT_CHOICES = [
+        ('cod', 'COD'),
+        ('terms', 'Payment Terms'),
+    ]
+    
+    company_name = models.CharField(max_length=100)
+    address = models.TextField()
+    email = models.EmailField()
+    phone_number = models.CharField(max_length=20)
+    payment_type = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default='cod')
+    payment_terms_days = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['company_name']
+        verbose_name = 'forwarder'
+        verbose_name_plural = 'forwarders'
+
+    def __str__(self):
+        return self.company_name
+    
+    def clean(self):
+        # Ensure payment_terms_days is provided when payment_type is 'terms'
+        if self.payment_type == 'terms' and self.payment_terms_days is None:
+            raise ValidationError({'payment_terms_days': 'Payment terms days is required when payment type is Payment Terms'})
+
+class ForwarderContact(models.Model):
+    forwarder = models.ForeignKey(Forwarder, on_delete=models.CASCADE, related_name='contacts')
+    contact_person = models.CharField(max_length=100)
+    position = models.CharField(max_length=100)
+    department = models.CharField(max_length=100)
+    email = models.EmailField()
+    office_number = models.CharField(max_length=20)
+    personal_number = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['contact_person']
+        verbose_name = 'forwarder contact'
+        verbose_name_plural = 'forwarder contacts'
+
+    def __str__(self):
+        return f"{self.forwarder.company_name} - {self.contact_person} ({self.position})"

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate, get_user_model
-from .models import CustomUser, Brand, Category, Warehouse, Shelf, Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm, ParentCompany, ParentCompanyPaymentTerm, Customer, CustomerAddress, CustomerContact, CustomerPaymentTerm, Broker, BrokerContact
+from .models import CustomUser, Brand, Category, Warehouse, Shelf, Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm, ParentCompany, ParentCompanyPaymentTerm, Customer, CustomerAddress, CustomerContact, CustomerPaymentTerm, Broker, BrokerContact, Forwarder, ForwarderContact
 
 User = get_user_model()
 
@@ -659,3 +659,113 @@ class BrokerCreateUpdateSerializer(serializers.ModelSerializer):
         # Delete contacts that weren't updated
         contacts_to_delete = existing_ids - updated_ids
         broker.contacts.filter(id__in=contacts_to_delete).delete()
+
+class ForwarderContactSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+    
+    class Meta:
+        model = ForwarderContact
+        fields = [
+            'id', 'contact_person', 'position', 'department', 
+            'email', 'office_number', 'personal_number'
+        ]
+        read_only_fields = ['id']
+
+class ForwarderSerializer(serializers.ModelSerializer):
+    contacts = ForwarderContactSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Forwarder
+        fields = [
+            'id', 'company_name', 'address', 'email', 'phone_number',
+            'payment_type', 'payment_terms_days', 'contacts',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+class ForwarderCreateUpdateSerializer(serializers.ModelSerializer):
+    contacts = ForwarderContactSerializer(many=True, required=False)
+    
+    class Meta:
+        model = Forwarder
+        fields = [
+            'id', 'company_name', 'address', 'email', 'phone_number',
+            'payment_type', 'payment_terms_days', 'contacts',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def validate(self, data):
+        # Validate that payment_terms_days is provided when payment_type is 'terms'
+        if data.get('payment_type') == 'terms' and data.get('payment_terms_days') is None:
+            raise serializers.ValidationError(
+                {"payment_terms_days": "Payment terms days is required when payment type is Payment Terms."}
+            )
+        
+        # Ensure payment_terms_days is None when payment_type is 'cod'
+        if data.get('payment_type') == 'cod':
+            data['payment_terms_days'] = None
+            
+        return data
+    
+    def create(self, validated_data):
+        contacts_data = validated_data.pop('contacts', [])
+        
+        forwarder = Forwarder.objects.create(**validated_data)
+        
+        # Create contacts
+        for contact_data in contacts_data:
+            ForwarderContact.objects.create(forwarder=forwarder, **contact_data)
+            
+        return forwarder
+    
+    def update(self, instance, validated_data):
+        contacts_data = validated_data.pop('contacts', None)
+        
+        # Update forwarder fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update contacts if provided
+        if contacts_data is not None:
+            self._update_nested_contacts(instance, contacts_data)
+            
+        return instance
+    
+    def _update_nested_contacts(self, forwarder, contacts_data):
+        """
+        Helper method to update nested contact objects
+        """
+        # Get existing IDs
+        existing_ids = set(forwarder.contacts.values_list('id', flat=True))
+        updated_ids = set()
+        
+        # Create or update contacts
+        for contact_data in contacts_data:
+            contact_id = contact_data.get('id')
+            
+            if contact_id:
+                # Update existing contact
+                try:
+                    contact = forwarder.contacts.get(id=contact_id)
+                    for attr, value in contact_data.items():
+                        if attr != 'id':
+                            setattr(contact, attr, value)
+                    contact.save()
+                    updated_ids.add(contact_id)
+                except ForwarderContact.DoesNotExist:
+                    # If ID doesn't exist, create new contact
+                    contact = ForwarderContact.objects.create(
+                        forwarder=forwarder, 
+                        **{k: v for k, v in contact_data.items() if k != 'id'}
+                    )
+                    updated_ids.add(contact.id)
+            else:
+                # Create new contact
+                contact = ForwarderContact.objects.create(forwarder=forwarder, **contact_data)
+                updated_ids.add(contact.id)
+        
+        # Delete contacts that weren't updated
+        contacts_to_delete = existing_ids - updated_ids
+        forwarder.contacts.filter(id__in=contacts_to_delete).delete()
