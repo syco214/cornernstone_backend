@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView
+from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView, BrokerView
 
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
@@ -18,4 +18,6 @@ urlpatterns = [
     path('parent-companies/<int:pk>/', ParentCompanyView.as_view(), name='parent-company-detail'),
     path('customers/', CustomerView.as_view(), name='customers'),
     path('customers/<int:pk>/', CustomerView.as_view(), name='customer-detail'),
+    path('brokers/', BrokerView.as_view(), name='brokers'),
+    path('brokers/<int:pk>/', BrokerView.as_view(), name='broker-detail'),
 ]

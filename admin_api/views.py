@@ -9,8 +9,8 @@ from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
-from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer
-from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer, CustomerSerializer, CustomerCreateUpdateSerializer
+from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer, Broker
+from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer, CustomerSerializer, CustomerCreateUpdateSerializer, BrokerSerializer, BrokerCreateUpdateSerializer
 
 # Create your views here.
 
@@ -958,6 +958,127 @@ class CustomerView(APIView, PageNumberPagination):
     def delete(self, request, pk):
         customer = get_object_or_404(Customer, pk=pk)
         customer.delete()
+        return Response({
+            'success': True,
+            'data': None
+        }, status=status.HTTP_200_OK)
+
+class BrokerView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        # If pk is provided, return a single broker with all related data
+        if pk:
+            broker = get_object_or_404(Broker, pk=pk)
+            serializer = BrokerSerializer(broker)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        # Get query parameters
+        search = request.query_params.get('search', '')
+        sort_by = request.query_params.get('sort_by', 'company_name')
+        sort_direction = request.query_params.get('sort_direction', 'asc')
+        payment_type = request.query_params.get('payment_type', '')
+        
+        # Query brokers
+        brokers = Broker.objects.all()
+
+        # Apply search filter
+        if search:
+            brokers = brokers.filter(
+                Q(company_name__icontains=search) |
+                Q(address__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone_number__icontains=search)
+            )
+        
+        # Filter by payment type if provided
+        if payment_type and payment_type in dict(Broker.PAYMENT_CHOICES):
+            brokers = brokers.filter(payment_type=payment_type)
+
+        # Apply sorting
+        sort_prefix = '-' if sort_direction == 'desc' else ''
+        brokers = brokers.order_by(f'{sort_prefix}{sort_by}')
+        
+        # Pagination
+        page = self.paginate_queryset(brokers, request)
+        if page is not None:
+            serializer = BrokerSerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+
+        # Fallback if pagination fails
+        serializer = BrokerSerializer(brokers, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+
+    def post(self, request):
+        serializer = BrokerCreateUpdateSerializer(data=request.data)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request, pk):
+        broker = get_object_or_404(Broker, pk=pk)
+        serializer = BrokerCreateUpdateSerializer(broker, data=request.data, partial=True)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        broker = get_object_or_404(Broker, pk=pk)
+        broker.delete()
         return Response({
             'success': True,
             'data': None
