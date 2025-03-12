@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView, BrokerView, ForwarderView, InventoryView, InventoryGeneralView, InventoryDescriptionView, CategoryChildrenView
+from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView, BrokerView, ForwarderView, InventoryView, InventoryGeneralView, InventoryDescriptionView, CategoryChildrenView, InventoryTemplateView, InventoryUploadView
 
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
@@ -28,4 +28,6 @@ urlpatterns = [
     path('inventory/general/', InventoryGeneralView.as_view(), name='inventory-general-create'),
     path('inventory/<int:pk>/general/', InventoryGeneralView.as_view(), name='inventory-general-update'),
     path('inventory/<int:pk>/description/', InventoryDescriptionView.as_view(), name='inventory-description-update'),
+    path('inventory/download-template/', InventoryTemplateView.as_view(), name='inventory-download-template'),
+    path('inventory/upload/', InventoryUploadView.as_view(), name='inventory-upload'),
 ]
