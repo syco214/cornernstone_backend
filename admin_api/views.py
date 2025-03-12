@@ -9,8 +9,8 @@ from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
-from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer, Broker, Forwarder
-from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer, CustomerSerializer, CustomerCreateUpdateSerializer, BrokerSerializer, BrokerCreateUpdateSerializer, ForwarderSerializer, ForwarderCreateUpdateSerializer
+from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer, Broker, Forwarder, Inventory
+from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer, CustomerSerializer, CustomerCreateUpdateSerializer, BrokerSerializer, BrokerCreateUpdateSerializer, ForwarderSerializer, ForwarderCreateUpdateSerializer, InventorySerializer
 
 # Create your views here.
 
@@ -1204,3 +1204,234 @@ class ForwarderView(APIView, PageNumberPagination):
             'success': True,
             'data': None
         }, status=status.HTTP_200_OK)
+
+class InventoryView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk=None):
+        # If pk is provided, return a single inventory item with all related data
+        if pk:
+            inventory = get_object_or_404(Inventory, pk=pk)
+            serializer = InventorySerializer(inventory, context={'request': request})
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        # Get query parameters
+        search = request.query_params.get('search', '')
+        sort_by = request.query_params.get('sort_by', 'item_code')
+        sort_direction = request.query_params.get('sort_direction', 'asc')
+        status_filter = request.query_params.get('status', '')
+        supplier_id = request.query_params.get('supplier_id', '')
+        brand_id = request.query_params.get('brand_id', '')
+        category_id = request.query_params.get('category_id', '')
+        
+        # Query inventory items
+        inventory_items = Inventory.objects.all()
+
+        # Apply search filter
+        if search:
+            inventory_items = inventory_items.filter(
+                Q(item_code__icontains=search) |
+                Q(product_name__icontains=search) |
+                Q(product_tagging__icontains=search)
+            )
+        
+        # Apply filters
+        if status_filter and status_filter in dict(Inventory.STATUS_CHOICES):
+            inventory_items = inventory_items.filter(status=status_filter)
+            
+        if supplier_id:
+            try:
+                supplier_id = int(supplier_id)
+                inventory_items = inventory_items.filter(supplier_id=supplier_id)
+            except ValueError:
+                pass
+                
+        if brand_id:
+            try:
+                brand_id = int(brand_id)
+                inventory_items = inventory_items.filter(brand_id=brand_id)
+            except ValueError:
+                pass
+                
+        if category_id:
+            try:
+                category_id = int(category_id)
+                inventory_items = inventory_items.filter(
+                    Q(category_id=category_id) |
+                    Q(subcategory_id=category_id) |
+                    Q(sub_level_category_id=category_id)
+                )
+            except ValueError:
+                pass
+
+        # Apply sorting
+        sort_prefix = '-' if sort_direction == 'desc' else ''
+        inventory_items = inventory_items.order_by(f'{sort_prefix}{sort_by}')
+        
+        # Pagination
+        page = self.paginate_queryset(inventory_items, request)
+        if page is not None:
+            serializer = InventorySerializer(page, many=True, context={'request': request})
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+
+        # Fallback if pagination fails
+        serializer = InventorySerializer(inventory_items, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+    
+    def delete(self, request, pk):
+        inventory = get_object_or_404(Inventory, pk=pk)
+        inventory.delete()
+        return Response({
+            'success': True,
+            'data': None
+        }, status=status.HTTP_200_OK)
+
+class InventoryGeneralView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        # Extract only general fields from request data
+        general_fields = [
+            'item_code', 'product_name', 'status', 'supplier', 'brand',
+            'product_tagging', 'category', 'subcategory', 'sub_level_category'
+        ]
+        general_data = {k: v for k, v in request.data.items() if k in general_fields}
+        
+        serializer = InventorySerializer(data=general_data, context={'request': request})
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request, pk):
+        inventory = get_object_or_404(Inventory, pk=pk)
+        
+        # Extract only general fields from request data
+        general_fields = [
+            'item_code', 'product_name', 'status', 'supplier', 'brand',
+            'product_tagging', 'category', 'subcategory', 'sub_level_category'
+        ]
+        general_data = {k: v for k, v in request.data.items() if k in general_fields}
+        
+        serializer = InventorySerializer(inventory, data=general_data, partial=True, context={'request': request})
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+class InventoryDescriptionView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def put(self, request, pk):
+        inventory = get_object_or_404(Inventory, pk=pk)
+        
+        # Extract only description fields from request data
+        description_fields = [
+            'unit', 'landed_cost_price', 'landed_cost_unit', 
+            'packaging_amount', 'packaging_units', 'packaging_package',
+            'external_description', 'length', 'length_unit', 'color',
+            'width', 'width_unit', 'height', 'height_unit',
+            'volume', 'volume_unit', 'materials', 'photo',
+            'list_price_currency', 'list_price', 'wholesale_price', 'remarks'
+        ]
+        
+        # Handle file upload separately
+        description_data = {}
+        for field in description_fields:
+            if field != 'photo' and field in request.data:
+                description_data[field] = request.data[field]
+        
+        # Handle photo upload if present
+        if 'photo' in request.FILES:
+            description_data['photo'] = request.FILES['photo']
+        
+        # Set has_description to True if any description field is provided
+        if any(description_data.values()):
+            description_data['has_description'] = True
+        
+        serializer = InventorySerializer(inventory, data=description_data, partial=True, context={'request': request})
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+class CategoryChildrenView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, parent_id):
+        # Get subcategories for a specific parent
+        categories = Category.objects.filter(parent_id=parent_id)
+        serializer = CategorySerializer(categories, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })

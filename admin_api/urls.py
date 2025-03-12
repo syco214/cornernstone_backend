@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView, BrokerView, ForwarderView
+from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView, BrokerView, ForwarderView, InventoryView, InventoryGeneralView, InventoryDescriptionView, CategoryChildrenView
 
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
@@ -10,6 +10,7 @@ urlpatterns = [
     path('brands/<int:pk>/', BrandView.as_view(), name='brand-detail'),
     path('categories/', CategoryView.as_view(), name='categories'),
     path('categories/<int:pk>/', CategoryView.as_view(), name='category-detail'),
+    path('categories/<int:parent_id>/children/', CategoryChildrenView.as_view(), name='category-children'),
     path('warehouses/', WarehouseView.as_view(), name='warehouses'),
     path('warehouses/<int:pk>/', WarehouseView.as_view(), name='warehouse-detail'),
     path('suppliers/', SupplierView.as_view(), name='suppliers'),
@@ -22,4 +23,9 @@ urlpatterns = [
     path('brokers/<int:pk>/', BrokerView.as_view(), name='broker-detail'),
     path('forwarders/', ForwarderView.as_view(), name='forwarders'),
     path('forwarders/<int:pk>/', ForwarderView.as_view(), name='forwarder-detail'),
+    path('inventory/', InventoryView.as_view(), name='inventory-list'),
+    path('inventory/<int:pk>/', InventoryView.as_view(), name='inventory-detail'),
+    path('inventory/general/', InventoryGeneralView.as_view(), name='inventory-general-create'),
+    path('inventory/<int:pk>/general/', InventoryGeneralView.as_view(), name='inventory-general-update'),
+    path('inventory/<int:pk>/description/', InventoryDescriptionView.as_view(), name='inventory-description-update'),
 ]

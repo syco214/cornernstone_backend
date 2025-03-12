@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
 
 # Define access options as simple constants
 USER_ACCESS_OPTIONS = [
@@ -407,3 +408,72 @@ class ForwarderContact(models.Model):
 
     def __str__(self):
         return f"{self.forwarder.company_name} - {self.contact_person} ({self.position})"
+
+User = get_user_model()
+
+class Inventory(models.Model):
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+    ]
+    
+    # General Information
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_inventories')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_modified_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='modified_inventories')
+    last_modified_at = models.DateTimeField(auto_now=True)
+    
+    item_code = models.CharField(max_length=50, unique=True)
+    product_name = models.CharField(max_length=200)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+    
+    supplier = models.ForeignKey('Supplier', on_delete=models.PROTECT, related_name='inventories')
+    brand = models.ForeignKey('Brand', on_delete=models.PROTECT, related_name='inventories')
+    product_tagging = models.CharField(max_length=200, blank=True)
+    
+    category = models.ForeignKey('Category', on_delete=models.PROTECT, related_name='inventories')
+    subcategory = models.ForeignKey('Category', on_delete=models.PROTECT, related_name='subcategory_inventories', null=True, blank=True)
+    sub_level_category = models.ForeignKey('Category', on_delete=models.PROTECT, related_name='sub_level_inventories', null=True, blank=True)
+
+    # Flag to track if description has been added
+    has_description = models.BooleanField(default=False)
+    
+    # New description fields
+    unit = models.CharField(max_length=50, blank=True)
+    landed_cost_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    landed_cost_unit = models.CharField(max_length=50, blank=True)
+    packaging_amount = models.IntegerField(null=True, blank=True)
+    packaging_units = models.CharField(max_length=50, blank=True)
+    packaging_package = models.CharField(max_length=100, blank=True)
+    external_description = models.TextField(blank=True)
+    length = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    length_unit = models.CharField(max_length=20, blank=True)
+    color = models.CharField(max_length=50, blank=True)
+    width = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    width_unit = models.CharField(max_length=20, blank=True)
+    height = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    height_unit = models.CharField(max_length=20, blank=True)
+    volume = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    volume_unit = models.CharField(max_length=20, blank=True)
+    materials = models.TextField(blank=True)
+    photo = models.ImageField(upload_to='inventory_photos/', null=True, blank=True)
+    list_price_currency = models.CharField(max_length=3, blank=True)
+    list_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    wholesale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    remarks = models.TextField(blank=True)
+    
+    class Meta:
+        verbose_name = 'inventory'
+        verbose_name_plural = 'inventories'
+        ordering = ['item_code']
+    
+    def __str__(self):
+        return f"{self.item_code} - {self.product_name}"
+    
+    def clean(self):
+        # Validate category hierarchy
+        if self.subcategory and self.subcategory.parent != self.category:
+            raise ValidationError({'subcategory': 'Subcategory must belong to the selected category.'})
+        
+        if self.sub_level_category and self.sub_level_category.parent != self.subcategory:
+            raise ValidationError({'sub_level_category': 'Sub-level category must belong to the selected subcategory.'})
