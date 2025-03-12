@@ -10,7 +10,6 @@ from admin_api.models import (
     CustomerPaymentTerm,
     ParentCompany
 )
-import json
 from decimal import Decimal
 
 User = get_user_model()

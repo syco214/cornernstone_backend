@@ -53,7 +53,7 @@ services:
     restart: always
 
   test:
-    build: .
+    image: cornerstone_backend-web
     command: python manage.py test tests
     profiles: ["test"]
     volumes:

@@ -237,6 +237,40 @@ class CategoryViewTests(TestCase):
         updated_category = Category.objects.get(id=self.child_category2.id)
         self.assertEqual(updated_category.parent.id, self.root_category2.id)
 
+    def test_get_category_children(self):
+        """Test retrieving children of a specific category using the dedicated endpoint"""
+        # URL for the children endpoint
+        children_url = reverse('category-children', args=[self.root_category1.id])
+        
+        # Get children of root_category1
+        response = self.client.get(children_url)
+        
+        # Verify response
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(len(response.data['data']), 2)  # 2 children under root_category1
+        
+        # Verify the correct children are returned
+        child_names = [child['name'] for child in response.data['data']]
+        self.assertIn('Child Category 1', child_names)
+        self.assertIn('Child Category 2', child_names)
+        
+        # Test with a category that has no children
+        no_children_url = reverse('category-children', args=[self.grandchild_category.id])
+        response = self.client.get(no_children_url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(len(response.data['data']), 0)  # No children
+        
+        # Test with a non-existent category ID
+        non_existent_url = reverse('category-children', args=[9999])  # Assuming 9999 doesn't exist
+        response = self.client.get(non_existent_url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(len(response.data['data']), 0)  # No children for non-existent category
+        
     def test_delete_category(self):
         """Test deleting a category"""
         response = self.client.delete(self.category_detail_url)

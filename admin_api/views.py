@@ -491,6 +491,18 @@ class CategoryView(APIView, PageNumberPagination):
         
         return descendants
 
+class CategoryChildrenView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, parent_id):
+        # Get subcategories for a specific parent
+        categories = Category.objects.filter(parent_id=parent_id)
+        serializer = CategorySerializer(categories, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+    
 class WarehouseView(APIView, PageNumberPagination):
     permission_classes = [IsAuthenticated]
 
@@ -1719,15 +1731,3 @@ class InventoryDescriptionView(APIView):
                 'success': False,
                 'errors': {'detail': str(e)}
             }, status=status.HTTP_400_BAD_REQUEST)
-
-class CategoryChildrenView(APIView):
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request, parent_id):
-        # Get subcategories for a specific parent
-        categories = Category.objects.filter(parent_id=parent_id)
-        serializer = CategorySerializer(categories, many=True)
-        return Response({
-            'success': True,
-            'data': serializer.data
-        })
