@@ -15,7 +15,7 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from django.http import HttpResponse
 from rest_framework.parsers import MultiPartParser, FormParser
 
-from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer, Broker, Forwarder, Inventory
+from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer, Broker, Forwarder, Inventory, ADMIN_ACCESS_OPTIONS
 from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer, CustomerSerializer, CustomerCreateUpdateSerializer, BrokerSerializer, BrokerCreateUpdateSerializer, ForwarderSerializer, ForwarderCreateUpdateSerializer, InventorySerializer
 
 # Create your views here.
@@ -73,7 +73,8 @@ class UserView(APIView, PageNumberPagination):
                 'data': serializer.data,
                 'meta': {
                     'user_access_options': USER_ACCESS_OPTIONS,
-                    'user_role_options': USER_ROLE_OPTIONS
+                    'user_role_options': USER_ROLE_OPTIONS,
+                    'admin_access_options': ADMIN_ACCESS_OPTIONS
                 }
             })
         
@@ -116,7 +117,8 @@ class UserView(APIView, PageNumberPagination):
                         'previous': paginated_response.data['previous'],
                     },
                     'user_access_options': USER_ACCESS_OPTIONS,
-                    'user_role_options': USER_ROLE_OPTIONS
+                    'user_role_options': USER_ROLE_OPTIONS,
+                    'admin_access_options': ADMIN_ACCESS_OPTIONS
                 }
             })
 
@@ -127,7 +129,8 @@ class UserView(APIView, PageNumberPagination):
             'data': serializer.data,
             'meta': {
                 'user_access_options': USER_ACCESS_OPTIONS,
-                'user_role_options': USER_ROLE_OPTIONS
+                'user_role_options': USER_ROLE_OPTIONS,
+                'admin_access_options': ADMIN_ACCESS_OPTIONS
             }
         })
 
@@ -141,7 +144,8 @@ class UserView(APIView, PageNumberPagination):
                     'data': serializer.data,
                     'meta': {
                         'user_access_options': USER_ACCESS_OPTIONS,
-                        'user_role_options': USER_ROLE_OPTIONS
+                        'user_role_options': USER_ROLE_OPTIONS,
+                        'admin_access_options': ADMIN_ACCESS_OPTIONS
                     }
                 }, status=status.HTTP_201_CREATED)
             else:
@@ -171,7 +175,8 @@ class UserView(APIView, PageNumberPagination):
                     'data': serializer.data,
                     'meta': {
                         'user_access_options': USER_ACCESS_OPTIONS,
-                        'user_role_options': USER_ROLE_OPTIONS
+                        'user_role_options': USER_ROLE_OPTIONS,
+                        'admin_access_options': ADMIN_ACCESS_OPTIONS
                     }
                 })
             else:

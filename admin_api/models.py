@@ -4,6 +4,19 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 
+# Define admin access options as simple constants
+ADMIN_ACCESS_OPTIONS = [
+    'users',
+    'brands',
+    'brokers',
+    'categories',
+    'forwarders',
+    'inventory',
+    'parent_companies',
+    'suppliers',
+    'warehouses',
+]
+
 # Define access options as simple constants
 USER_ACCESS_OPTIONS = [
     'inventory',
@@ -38,6 +51,14 @@ class CustomUser(AbstractUser):
         models.CharField(
             max_length=20, 
             choices=[(access, access.capitalize()) for access in USER_ACCESS_OPTIONS]
+        ),
+        blank=True,
+        default=list
+    )
+    admin_access = ArrayField(
+        models.CharField(
+            max_length=20, 
+            choices=[(access, access.capitalize()) for access in ADMIN_ACCESS_OPTIONS]
         ),
         blank=True,
         default=list

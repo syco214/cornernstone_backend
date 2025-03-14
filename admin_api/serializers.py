@@ -28,7 +28,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 
-            'role', 'user_access', 'password', 
+            'role', 'user_access', 'admin_access', 'password', 
             'is_active', 'date_joined'
         ]
         read_only_fields = ['id', 'date_joined']
