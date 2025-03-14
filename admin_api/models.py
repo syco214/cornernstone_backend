@@ -10,6 +10,7 @@ ADMIN_ACCESS_OPTIONS = [
     'brands',
     'brokers',
     'categories',
+    'customers',
     'forwarders',
     'inventory',
     'parent_companies',
