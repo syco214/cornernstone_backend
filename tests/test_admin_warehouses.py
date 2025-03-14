@@ -42,13 +42,15 @@ class WarehouseTests(APITestCase):
         # Create shelves for warehouse1
         self.shelf1 = Shelf.objects.create(
             warehouse=self.warehouse1,
-            number='A1',
+            aisle='A',
+            shelf='1',
             info='Electronics'
         )
         
         self.shelf2 = Shelf.objects.create(
             warehouse=self.warehouse1,
-            number='B2',
+            aisle='B',
+            shelf='2',
             info='Clothing'
         )
         
@@ -160,8 +162,8 @@ class WarehouseTests(APITestCase):
             'address': '321 East St',
             'city': 'Boston',
             'shelves': [
-                {'number': 'C3', 'info': 'Books'},
-                {'number': 'D4', 'info': 'Toys'}
+                {'aisle': 'C', 'shelf': '3', 'info': 'Books'},
+                {'aisle': 'D', 'shelf': '4', 'info': 'Toys'}
             ]
         }
         
@@ -179,8 +181,8 @@ class WarehouseTests(APITestCase):
         # Verify warehouse and shelves were created in database
         warehouse = Warehouse.objects.get(name='East Side Warehouse')
         self.assertEqual(warehouse.shelves.count(), 2)
-        self.assertTrue(warehouse.shelves.filter(number='C3').exists())
-        self.assertTrue(warehouse.shelves.filter(number='D4').exists())
+        self.assertTrue(warehouse.shelves.filter(aisle='C', shelf='3').exists())
+        self.assertTrue(warehouse.shelves.filter(aisle='D', shelf='4').exists())
     
     def test_create_warehouse_invalid_data(self):
         """
@@ -234,9 +236,9 @@ class WarehouseTests(APITestCase):
         """
         data = {
             'shelves': [
-                {'id': self.shelf1.id, 'number': 'A1', 'info': 'Electronics'},
-                {'id': self.shelf2.id, 'number': 'B2', 'info': 'Clothing'},
-                {'number': 'E5', 'info': 'New Shelf'}
+                {'id': self.shelf1.id, 'aisle': 'A', 'shelf': '1', 'info': 'Electronics'},
+                {'id': self.shelf2.id, 'aisle': 'B', 'shelf': '2', 'info': 'Clothing'},
+                {'aisle': 'E', 'shelf': '5', 'info': 'New Shelf'}
             ]
         }
         
@@ -253,7 +255,7 @@ class WarehouseTests(APITestCase):
         # Verify new shelf in database
         self.warehouse1.refresh_from_db()
         self.assertEqual(self.warehouse1.shelves.count(), 3)
-        self.assertTrue(self.warehouse1.shelves.filter(number='E5').exists())
+        self.assertTrue(self.warehouse1.shelves.filter(aisle='E', shelf='5').exists())
     
     def test_update_warehouse_modify_shelves(self):
         """
@@ -261,8 +263,8 @@ class WarehouseTests(APITestCase):
         """
         data = {
             'shelves': [
-                {'id': self.shelf1.id, 'number': 'A1', 'info': 'Updated Info'},
-                {'id': self.shelf2.id, 'number': 'B2-Updated', 'info': 'Clothing'}
+                {'id': self.shelf1.id, 'aisle': 'A', 'shelf': '1', 'info': 'Updated Info'},
+                {'id': self.shelf2.id, 'aisle': 'B', 'shelf': '3', 'info': 'Clothing'}
             ]
         }
         
@@ -279,7 +281,7 @@ class WarehouseTests(APITestCase):
         self.shelf1.refresh_from_db()
         self.shelf2.refresh_from_db()
         self.assertEqual(self.shelf1.info, 'Updated Info')
-        self.assertEqual(self.shelf2.number, 'B2-Updated')
+        self.assertEqual(self.shelf2.shelf, '3')
     
     def test_update_warehouse_remove_shelves(self):
         """
@@ -287,7 +289,7 @@ class WarehouseTests(APITestCase):
         """
         data = {
             'shelves': [
-                {'id': self.shelf1.id, 'number': 'A1', 'info': 'Electronics'}
+                {'id': self.shelf1.id, 'aisle': 'A', 'shelf': '1', 'info': 'Electronics'}
                 # shelf2 is omitted, which should delete it
             ]
         }

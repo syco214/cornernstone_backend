@@ -89,7 +89,7 @@ class ShelfSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Shelf
-        fields = ['id', 'number', 'info']
+        fields = ['id', 'aisle', 'shelf', 'info']
         read_only_fields = ['id']
 
 class WarehouseSerializer(serializers.ModelSerializer):
@@ -141,7 +141,8 @@ class WarehouseCreateUpdateSerializer(serializers.ModelSerializer):
                     # Update existing shelf
                     try:
                         shelf = Shelf.objects.get(id=shelf_id, warehouse=instance)
-                        shelf.number = shelf_data.get('number', shelf.number)
+                        shelf.aisle = shelf_data.get('aisle', shelf.aisle)
+                        shelf.shelf = shelf_data.get('shelf', shelf.shelf)
                         shelf.info = shelf_data.get('info', shelf.info)
                         shelf.save()
                         updated_shelf_ids.add(shelf_id)

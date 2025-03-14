@@ -136,19 +136,20 @@ class Warehouse(models.Model):
         return f"{self.name} ({self.city})"
 
 class Shelf(models.Model):
-    number = models.CharField(max_length=50)
+    aisle = models.CharField(max_length=25)
+    shelf = models.CharField(max_length=25)
     info = models.CharField(max_length=255)
     warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='shelves')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['number']
-        unique_together = [['number', 'warehouse']]
+        ordering = ['aisle', 'shelf']
+        unique_together = [['aisle', 'shelf', 'warehouse']]
         verbose_name_plural = 'shelves'
 
     def __str__(self):
-        return f"{self.warehouse.name} > Shelf #{self.number} ({self.info})"
+        return f"{self.warehouse.name} > Aisle {self.aisle}, Shelf {self.shelf} ({self.info})"
     
 class Supplier(models.Model):
     SUPPLIER_TYPES = [
