@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate, get_user_model
-from .models import CustomUser, Brand, Category, Warehouse, Shelf, Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm, ParentCompany, ParentCompanyPaymentTerm, Customer, CustomerAddress, CustomerContact, CustomerPaymentTerm, Broker, BrokerContact, Forwarder, ForwarderContact, Inventory
+from .models import CustomUser, Brand, Category, Warehouse, Shelf, Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm, SupplierBank, ParentCompany, ParentCompanyPaymentTerm, Customer, CustomerAddress, CustomerContact, CustomerPaymentTerm, Broker, BrokerContact, Forwarder, ForwarderContact, Inventory
 from django.conf import settings
 
 User = get_user_model()
@@ -160,6 +160,18 @@ class WarehouseCreateUpdateSerializer(serializers.ModelSerializer):
             
         return instance
 
+class SupplierBankSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+    
+    class Meta:
+        model = SupplierBank
+        fields = [
+            'id', 'bank_name', 'bank_address', 'account_number', 
+            'currency', 'iban', 'swift_code', 'intermediary_bank',
+            'intermediary_swift_name', 'beneficiary_name', 'beneficiary_address'
+        ]
+        read_only_fields = ['id']
+
 class SupplierAddressSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
     
@@ -192,13 +204,14 @@ class SupplierSerializer(serializers.ModelSerializer):
     addresses = SupplierAddressSerializer(many=True, read_only=True)
     contacts = SupplierContactSerializer(many=True, read_only=True)
     payment_term = SupplierPaymentTermSerializer(read_only=True)
+    banks = SupplierBankSerializer(many=True, read_only=True)
     
     class Meta:
         model = Supplier
         fields = [
             'id', 'name', 'registered_name', 'supplier_type', 'currency',
             'phone_number', 'email', 'inco_terms', 'remarks',
-            'addresses', 'contacts', 'payment_term',
+            'addresses', 'contacts', 'payment_term', 'banks',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -207,13 +220,14 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
     addresses = SupplierAddressSerializer(many=True, required=False)
     contacts = SupplierContactSerializer(many=True, required=False)
     payment_term = SupplierPaymentTermSerializer(required=False)
+    banks = SupplierBankSerializer(many=True, required=False)
     
     class Meta:
         model = Supplier
         fields = [
             'id', 'name', 'registered_name', 'supplier_type', 'currency',
             'phone_number', 'email', 'inco_terms', 'remarks',
-            'addresses', 'contacts', 'payment_term',
+            'addresses', 'contacts', 'payment_term', 'banks',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -222,6 +236,7 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
         addresses_data = validated_data.pop('addresses', [])
         contacts_data = validated_data.pop('contacts', [])
         payment_term_data = validated_data.pop('payment_term', None)
+        banks_data = validated_data.pop('banks', [])
         
         supplier = Supplier.objects.create(**validated_data)
         
@@ -236,6 +251,10 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
         # Create payment term if provided
         if payment_term_data:
             SupplierPaymentTerm.objects.create(supplier=supplier, **payment_term_data)
+        
+        # Create banks
+        for bank_data in banks_data:
+            SupplierBank.objects.create(supplier=supplier, **bank_data)
             
         return supplier
     
@@ -243,6 +262,7 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
         addresses_data = validated_data.pop('addresses', None)
         contacts_data = validated_data.pop('contacts', None)
         payment_term_data = validated_data.pop('payment_term', None)
+        banks_data = validated_data.pop('banks', None)
         
         # Update supplier fields
         for attr, value in validated_data.items():
@@ -267,6 +287,15 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
                 'supplier'
             )
         
+        # Update banks if provided
+        if banks_data is not None:
+            self._update_nested_objects(
+                instance.banks, 
+                banks_data, 
+                SupplierBank, 
+                'supplier'
+            )
+        
         # Update payment term if provided
         if payment_term_data is not None:
             try:
@@ -281,7 +310,7 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
     
     def _update_nested_objects(self, queryset, data_list, model_class, parent_field_name):
         """
-        Helper method to update nested objects (addresses, contacts)
+        Helper method to update nested objects (addresses, contacts, banks)
         """
         # Get existing IDs
         existing_ids = set(queryset.values_list('id', flat=True))

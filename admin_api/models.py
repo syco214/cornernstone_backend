@@ -224,6 +224,28 @@ class SupplierPaymentTerm(models.Model):
     def __str__(self):
         return f"{self.supplier.name} - {self.name}"
 
+class SupplierBank(models.Model):
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='banks')
+    bank_name = models.CharField(max_length=100)
+    bank_address = models.TextField()
+    account_number = models.CharField(max_length=50)
+    currency = models.CharField(max_length=3)  # ISO currency code (e.g., USD, EUR)
+    iban = models.CharField(max_length=50, blank=True)
+    swift_code = models.CharField(max_length=20)
+    intermediary_bank = models.CharField(max_length=100, blank=True)
+    intermediary_swift_name = models.CharField(max_length=100, blank=True)
+    beneficiary_name = models.CharField(max_length=100)
+    beneficiary_address = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['bank_name']
+        verbose_name_plural = 'supplier banks'
+
+    def __str__(self):
+        return f"{self.supplier.name} - {self.bank_name} ({self.currency})"
+    
 class ParentCompany(models.Model):
     name = models.CharField(max_length=100)
     consolidate_payment_terms = models.BooleanField(default=False)

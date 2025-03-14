@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
-from admin_api.models import Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm
+from admin_api.models import Supplier, SupplierAddress, SupplierContact, SupplierPaymentTerm, SupplierBank
 import json
 
 User = get_user_model()
@@ -59,6 +59,21 @@ class SupplierViewTests(TestCase):
             department='Sales'
         )
         
+        # Create bank for supplier1
+        self.bank1 = SupplierBank.objects.create(
+            supplier=self.supplier1,
+            bank_name='Test Bank',
+            bank_address='456 Bank Street, Bank City, Bank Country',
+            account_number='123456789',
+            currency='USD',
+            iban='US123456789',
+            swift_code='TESTBANKXXX',
+            intermediary_bank='Intermediary Test Bank',
+            intermediary_swift_name='INTERBANKXXX',
+            beneficiary_name='Test Supplier Company',
+            beneficiary_address='123 Beneficiary St, Beneficiary City'
+        )
+        
         # Create payment term for supplier1
         self.payment_term1 = SupplierPaymentTerm.objects.create(
             supplier=self.supplier1,
@@ -106,6 +121,11 @@ class SupplierViewTests(TestCase):
         self.assertEqual(len(data['contacts']), 1)
         self.assertEqual(data['contacts'][0]['contact_person'], 'John Doe')
         
+        # Check bank data
+        self.assertEqual(len(data['banks']), 1)
+        self.assertEqual(data['banks'][0]['bank_name'], 'Test Bank')
+        self.assertEqual(data['banks'][0]['swift_code'], 'TESTBANKXXX')
+        
         self.assertIsNotNone(data['payment_term'])
         self.assertEqual(data['payment_term']['name'], 'Net 30')
     
@@ -131,6 +151,20 @@ class SupplierViewTests(TestCase):
                     'contact_person': 'Jane Smith',
                     'position': 'Procurement Officer',
                     'department': 'Procurement'
+                }
+            ],
+            'banks': [
+                {
+                    'bank_name': 'New Bank',
+                    'bank_address': '789 Bank Avenue, Bank City',
+                    'account_number': '987654321',
+                    'currency': 'USD',
+                    'iban': 'US987654321',
+                    'swift_code': 'NEWBANKXXX',
+                    'intermediary_bank': 'New Intermediary Bank',
+                    'intermediary_swift_name': 'NEWINTERBANKXXX',
+                    'beneficiary_name': 'New Supplier Company',
+                    'beneficiary_address': '789 New Beneficiary St'
                 }
             ],
             'payment_term': {
@@ -161,6 +195,7 @@ class SupplierViewTests(TestCase):
         # Verify related objects were created
         self.assertEqual(new_supplier.addresses.count(), 1)
         self.assertEqual(new_supplier.contacts.count(), 1)
+        self.assertEqual(new_supplier.banks.count(), 1)
         self.assertTrue(hasattr(new_supplier, 'payment_term'))
     
     def test_update_supplier(self):
@@ -185,6 +220,33 @@ class SupplierViewTests(TestCase):
                     'contact_person': 'Updated Person',
                     'position': self.contact1.position,
                     'department': self.contact1.department
+                }
+            ],
+            'banks': [
+                {
+                    'id': self.bank1.id,
+                    'bank_name': 'Updated Bank',
+                    'bank_address': self.bank1.bank_address,
+                    'account_number': 'UPDATED123456',
+                    'currency': self.bank1.currency,
+                    'iban': self.bank1.iban,
+                    'swift_code': 'UPDATEDSWIFT',
+                    'intermediary_bank': self.bank1.intermediary_bank,
+                    'intermediary_swift_name': self.bank1.intermediary_swift_name,
+                    'beneficiary_name': self.bank1.beneficiary_name,
+                    'beneficiary_address': self.bank1.beneficiary_address
+                },
+                {
+                    'bank_name': 'Second Bank',
+                    'bank_address': '999 Second Bank St, Second City',
+                    'account_number': '999888777',
+                    'currency': 'EUR',
+                    'iban': 'EU999888777',
+                    'swift_code': 'SECONDBANKXXX',
+                    'intermediary_bank': 'Second Intermediary',
+                    'intermediary_swift_name': 'SECONDINTERXXX',
+                    'beneficiary_name': 'Updated Supplier Company',
+                    'beneficiary_address': '999 Updated Address St'
                 }
             ],
             'payment_term': {
@@ -223,6 +285,15 @@ class SupplierViewTests(TestCase):
         self.contact1.refresh_from_db()
         self.assertEqual(self.contact1.contact_person, 'Updated Person')
         
+        # Verify bank was updated and new one added
+        self.assertEqual(self.supplier1.banks.count(), 2)
+        self.bank1.refresh_from_db()
+        self.assertEqual(self.bank1.bank_name, 'Updated Bank')
+        self.assertEqual(self.bank1.swift_code, 'UPDATEDSWIFT')
+        
+        # Verify second bank was created
+        self.assertTrue(self.supplier1.banks.filter(bank_name='Second Bank').exists())
+        
         self.payment_term1.refresh_from_db()
         self.assertEqual(self.payment_term1.name, 'Updated Terms')
         self.assertEqual(self.payment_term1.credit_limit, 20000.00)
@@ -240,6 +311,7 @@ class SupplierViewTests(TestCase):
         # Verify related objects were deleted (cascade)
         self.assertEqual(SupplierAddress.objects.filter(supplier=self.supplier1).count(), 0)
         self.assertEqual(SupplierContact.objects.filter(supplier=self.supplier1).count(), 0)
+        self.assertEqual(SupplierBank.objects.filter(supplier=self.supplier1).count(), 0)
         self.assertEqual(SupplierPaymentTerm.objects.filter(supplier=self.supplier1).count(), 0)
     
     def test_search_suppliers(self):
