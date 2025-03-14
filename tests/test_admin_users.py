@@ -20,7 +20,8 @@ class UserViewTests(TestCase):
             first_name='Admin',
             last_name='User',
             role='admin',
-            user_access=['admin']
+            user_access=['admin'],
+            admin_access=['users', 'inventory']
         )
         
         # Create regular users
@@ -31,17 +32,20 @@ class UserViewTests(TestCase):
             first_name='User',
             last_name='One',
             role='user',
-            user_access=['inventory']
+            user_access=['inventory'],
+            admin_access=[]
         )
         
+        # Create supervisor user with admin access
         self.user2 = User.objects.create_user(
             username='user2',
             email='user2@example.com',
             password='password123',
             first_name='User',
             last_name='Two',
-            role='user',
-            user_access=['warehouse']
+            role='supervisor',
+            user_access=['warehouse'],
+            admin_access=['warehouses', 'inventory']
         )
         
         # Authenticate as admin
@@ -58,8 +62,9 @@ class UserViewTests(TestCase):
             'password': 'newpassword123',
             'first_name': 'New',
             'last_name': 'User',
-            'role': 'user',
+            'role': 'supervisor',
             'user_access': ['inventory', 'warehouse'],
+            'admin_access': ['inventory'],
             'is_active': True
         }
         
@@ -67,7 +72,8 @@ class UserViewTests(TestCase):
         self.update_data = {
             'first_name': 'Updated',
             'last_name': 'Name',
-            'user_access': ['finance']
+            'user_access': ['finance'],
+            'admin_access': ['users']
         }
 
     def test_get_users_list(self):
@@ -79,6 +85,7 @@ class UserViewTests(TestCase):
         self.assertIn('meta', response.data)
         self.assertIn('user_access_options', response.data['meta'])
         self.assertIn('user_role_options', response.data['meta'])
+        self.assertIn('admin_access_options', response.data['meta'])
 
     def test_get_users_with_search(self):
         """Test retrieving users with search parameter"""
@@ -104,9 +111,20 @@ class UserViewTests(TestCase):
         self.assertEqual(response.data['data']['username'], 'user1')
         self.assertEqual(response.data['data']['first_name'], 'User')
         self.assertEqual(response.data['data']['last_name'], 'One')
+        self.assertEqual(response.data['data']['admin_access'], [])
+
+    def test_get_supervisor_with_admin_access(self):
+        """Test retrieving a supervisor user with admin_access"""
+        supervisor_url = reverse('user-detail', args=[self.user2.id])
+        response = self.client.get(supervisor_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(response.data['data']['username'], 'user2')
+        self.assertEqual(response.data['data']['role'], 'supervisor')
+        self.assertEqual(set(response.data['data']['admin_access']), set(['warehouses', 'inventory']))
 
     def test_create_user(self):
-        """Test creating a new user"""
+        """Test creating a new user with admin_access"""
         response = self.client.post(self.users_url, self.new_user_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(response.data['success'])
@@ -114,8 +132,9 @@ class UserViewTests(TestCase):
         self.assertEqual(response.data['data']['email'], 'new@example.com')
         self.assertEqual(response.data['data']['first_name'], 'New')
         self.assertEqual(response.data['data']['last_name'], 'User')
-        self.assertEqual(response.data['data']['role'], 'user')
+        self.assertEqual(response.data['data']['role'], 'supervisor')
         self.assertEqual(response.data['data']['user_access'], ['inventory', 'warehouse'])
+        self.assertEqual(response.data['data']['admin_access'], ['inventory'])
 
     def test_create_user_invalid_data(self):
         """Test creating a user with invalid data"""
@@ -123,21 +142,22 @@ class UserViewTests(TestCase):
             'username': '',  # Empty username
             'email': 'invalid-email',  # Invalid email
             'password': 'short',  # Short password
+            'admin_access': ['invalid_section']  # Invalid admin access
         }
         response = self.client.post(self.users_url, invalid_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data['success'])
         self.assertIn('errors', response.data)
 
-    def test_update_user(self):
-        """Test updating a user"""
-        update_data = {
+    def test_update_user_basic(self):
+        """Test updating a user with basic fields"""
+        basic_update = {
             'first_name': 'Updated',
             'last_name': 'Name',
             'user_access': ['delivery']
         }
         
-        response = self.client.put(self.user_detail_url, update_data, format='json')
+        response = self.client.put(self.user_detail_url, basic_update, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
         self.assertEqual(response.data['data']['first_name'], 'Updated')
@@ -148,11 +168,31 @@ class UserViewTests(TestCase):
         """Test updating a user with invalid data"""
         invalid_data = {
             'email': 'invalid-email',  # Invalid email
+            'admin_access': ['invalid_section']  # Invalid admin access
         }
         response = self.client.put(self.user_detail_url, invalid_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data['success'])
         self.assertIn('errors', response.data)
+
+    def test_update_user_with_admin_access(self):
+        """Test updating a user with admin_access"""
+        update_data_with_role = {
+            'first_name': 'Updated',
+            'last_name': 'Name',
+            'role': 'supervisor',
+            'user_access': ['delivery'],
+            'admin_access': ['users']
+        }
+        
+        response = self.client.put(self.user_detail_url, update_data_with_role, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(response.data['data']['first_name'], 'Updated')
+        self.assertEqual(response.data['data']['last_name'], 'Name')
+        self.assertEqual(response.data['data']['role'], 'supervisor')
+        self.assertEqual(response.data['data']['user_access'], ['delivery'])
+        self.assertEqual(response.data['data']['admin_access'], ['users'])
 
     def test_delete_user(self):
         """Test deleting a user"""

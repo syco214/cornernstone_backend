@@ -18,8 +18,8 @@ class LoginSerializer(serializers.Serializer):
 class SidebarUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'role', 'user_access']
-        read_only_fields = ['id', 'first_name', 'last_name', 'role', 'user_access']
+        fields = ['id', 'first_name', 'last_name', 'role', 'user_access', 'admin_access']
+        read_only_fields = ['id', 'first_name', 'last_name', 'role', 'user_access', 'admin_access']
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
