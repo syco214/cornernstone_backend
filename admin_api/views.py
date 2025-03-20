@@ -649,7 +649,6 @@ class SupplierView(APIView, PageNumberPagination):
         if search:
             suppliers = suppliers.filter(
                 Q(name__icontains=search) |
-                Q(registered_name__icontains=search) |
                 Q(email__icontains=search)
             )
         
@@ -1343,7 +1342,7 @@ class InventoryTemplateView(APIView):
         # Define headers
         headers = [
             'Item Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
-            'Product Tagging', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID',
+            'Product Tagging*', 'Audit Status*', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID',
             'Unit', 'Landed Cost Price', 'Landed Cost Unit', 'Packaging Amount',
             'Packaging Units', 'Packaging Package', 'External Description',
             'Length', 'Length Unit', 'Color', 'Width', 'Width Unit',
@@ -1365,7 +1364,7 @@ class InventoryTemplateView(APIView):
         # Add a second row with example data
         example_data = [
             'ITM001', 'Example Product', 'active', '1', '1',
-            'Tag1, Tag2', '1', '2', '3',
+            'never_sold', 'False', '1', '2', '3',
             'pcs', '100.00', 'USD', '10',
             'pcs', 'Box', 'Product description here',
             '10.5', 'cm', 'Blue', '5.2', 'cm',
@@ -1433,7 +1432,8 @@ class InventoryUploadView(APIView):
                 'Status*': 'status',
                 'Supplier ID*': 'supplier',
                 'Brand ID*': 'brand',
-                'Product Tagging': 'product_tagging',
+                'Product Tagging*': 'product_tagging',
+                'Audit Status*': 'audit_status',
                 'Category ID*': 'category',
                 'Subcategory ID': 'subcategory',
                 'Sub Level Category ID': 'sub_level_category',
@@ -1463,7 +1463,7 @@ class InventoryUploadView(APIView):
             df = df.rename(columns=column_mapping)
             
             # Check for required columns
-            required_columns = ['item_code', 'product_name', 'status', 'supplier', 'brand', 'category']
+            required_columns = ['item_code', 'product_name', 'status', 'supplier', 'brand', 'product_tagging', 'audit_status', 'category']
             missing_columns = [col for col in required_columns if col not in df.columns]
             
             if missing_columns:
@@ -1488,6 +1488,9 @@ class InventoryUploadView(APIView):
                 # Validate required fields
                 validation_errors = {}
                 for field in required_columns:
+                    if field == 'audit_status' and row_data.get(field) is not None:
+                        # audit_status is a boolean, so False is a valid value
+                        continue
                     if not row_data.get(field):
                         validation_errors[field] = f'This field is required.'
                 
@@ -1501,6 +1504,20 @@ class InventoryUploadView(APIView):
                 # Validate status
                 if row_data.get('status') not in dict(Inventory.STATUS_CHOICES):
                     validation_errors['status'] = f'Status must be one of: {", ".join(dict(Inventory.STATUS_CHOICES).keys())}'
+                
+                # Validate product_tagging
+                if row_data.get('product_tagging') not in dict(Inventory.PRODUCT_TAGGING_CHOICES):
+                    validation_errors['product_tagging'] = f'Product Tagging must be one of: {", ".join(dict(Inventory.PRODUCT_TAGGING_CHOICES).keys())}'
+                
+                # Convert audit_status to boolean
+                if row_data.get('audit_status') is not None:
+                    if isinstance(row_data['audit_status'], str):
+                        if row_data['audit_status'].lower() in ('true', 't', 'yes', 'y', '1'):
+                            row_data['audit_status'] = True
+                        elif row_data['audit_status'].lower() in ('false', 'f', 'no', 'n', '0'):
+                            row_data['audit_status'] = False
+                        else:
+                            validation_errors['audit_status'] = 'Audit Status must be True or False.'
                 
                 # Validate foreign keys
                 try:

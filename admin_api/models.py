@@ -38,11 +38,16 @@ USER_ROLE_OPTIONS = [
     'supervisor'
 ]
 
+STATUS_CHOICES = [
+    ('active', 'Active'),
+    ('inactive', 'Inactive'),
+]
+
 class CustomUser(AbstractUser):
     
-    email = models.EmailField('email address')
     first_name = models.CharField('first name', max_length=150)
     last_name = models.CharField('last name', max_length=150)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     role = models.CharField(
         max_length=20,
         choices=[(role, role.capitalize()) for role in USER_ROLE_OPTIONS],
@@ -157,20 +162,25 @@ class Supplier(models.Model):
         ('foreign', 'Foreign'),
     ]
     
+    CURRENCY_CHOICES = [
+        ('USD', 'USD'),
+        ('EURO', 'EURO'),
+        ('RMB', 'RMB'),
+        ('PHP', 'PHP'),
+    ]
+    
     name = models.CharField(max_length=100)
-    registered_name = models.CharField(max_length=100)
     supplier_type = models.CharField(max_length=10, choices=SUPPLIER_TYPES)
-    currency = models.CharField(max_length=3)  # ISO currency code (e.g., USD, EUR)
+    currency = models.CharField(max_length=4, choices=CURRENCY_CHOICES)
     phone_number = models.CharField(max_length=20)
     email = models.EmailField()
-    inco_terms = models.TextField(blank=True)
+    delivery_terms = models.TextField(blank=True)
     remarks = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['name']
-        unique_together = [['name', 'registered_name']]
 
     def __str__(self):
         return f"{self.name} ({self.get_supplier_type_display()})"
@@ -207,16 +217,10 @@ class SupplierPaymentTerm(models.Model):
     supplier = models.OneToOneField(Supplier, on_delete=models.CASCADE, related_name='payment_term')
     name = models.CharField(max_length=100)
     credit_limit = models.DecimalField(max_digits=15, decimal_places=2)
-    
-    # Stock payment terms
-    stock_payment_terms = models.CharField(max_length=100)
-    stock_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
-    stock_terms_days = models.PositiveIntegerField()
-    
-    # Import payment terms
-    import_payment_terms = models.CharField(max_length=100)
-    import_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
-    import_terms_days = models.PositiveIntegerField()
+
+    payment_terms = models.CharField(max_length=100)
+    dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    terms_days = models.PositiveIntegerField()
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -462,6 +466,13 @@ class Inventory(models.Model):
         ('inactive', 'Inactive'),
     ]
     
+    PRODUCT_TAGGING_CHOICES = [
+        ('never_sold', 'Never Sold'),
+        ('discontinued', 'Discontinued'),
+        ('dormant', 'Dormant'),
+        ('none', 'None'),
+    ]
+    
     # General Information
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_inventories')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -474,7 +485,8 @@ class Inventory(models.Model):
     
     supplier = models.ForeignKey('Supplier', on_delete=models.PROTECT, related_name='inventories')
     brand = models.ForeignKey('Brand', on_delete=models.PROTECT, related_name='inventories')
-    product_tagging = models.CharField(max_length=200, blank=True)
+    product_tagging = models.CharField(max_length=50, choices=PRODUCT_TAGGING_CHOICES, default='never_sold')
+    audit_status = models.BooleanField(default=False)
     
     category = models.ForeignKey('Category', on_delete=models.PROTECT, related_name='inventories')
     subcategory = models.ForeignKey('Category', on_delete=models.PROTECT, related_name='subcategory_inventories', null=True, blank=True)
@@ -506,6 +518,14 @@ class Inventory(models.Model):
     list_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     wholesale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     remarks = models.TextField(blank=True)
+    
+    # Inventory tracking fields (not editable through admin, default to 0)
+    stock_on_hand = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    reserved_pending_so = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    available_for_sale = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    incoming_pending_po = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    incoming_stock = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_expected = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     class Meta:
         verbose_name = 'inventory'

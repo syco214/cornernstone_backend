@@ -27,7 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = [
-            'id', 'username', 'email', 'first_name', 'last_name', 
+            'id', 'username', 'status','first_name', 'last_name', 
             'role', 'user_access', 'admin_access', 'password', 
             'is_active', 'date_joined'
         ]
@@ -195,8 +195,7 @@ class SupplierPaymentTermSerializer(serializers.ModelSerializer):
         model = SupplierPaymentTerm
         fields = [
             'id', 'name', 'credit_limit', 
-            'stock_payment_terms', 'stock_dp_percentage', 'stock_terms_days',
-            'import_payment_terms', 'import_dp_percentage', 'import_terms_days'
+            'payment_terms', 'dp_percentage', 'terms_days'
         ]
         read_only_fields = ['id']
 
@@ -209,8 +208,8 @@ class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
         fields = [
-            'id', 'name', 'registered_name', 'supplier_type', 'currency',
-            'phone_number', 'email', 'inco_terms', 'remarks',
+            'id', 'name', 'supplier_type', 'currency',
+            'phone_number', 'email', 'delivery_terms', 'remarks',
             'addresses', 'contacts', 'payment_term', 'banks',
             'created_at', 'updated_at'
         ]
@@ -225,8 +224,8 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
         fields = [
-            'id', 'name', 'registered_name', 'supplier_type', 'currency',
-            'phone_number', 'email', 'inco_terms', 'remarks',
+            'id', 'name', 'supplier_type', 'currency',
+            'phone_number', 'email', 'delivery_terms', 'remarks',
             'addresses', 'contacts', 'payment_term', 'banks',
             'created_at', 'updated_at'
         ]
@@ -819,7 +818,7 @@ class InventorySerializer(serializers.ModelSerializer):
             'last_modified_by', 'last_modified_by_name', 'last_modified_at',
             'item_code', 'product_name', 'status', 
             'supplier', 'supplier_name', 'brand', 'brand_name', 'made_in',
-            'product_tagging', 'category', 'category_name', 
+            'product_tagging', 'audit_status', 'category', 'category_name', 
             'subcategory', 'subcategory_name', 
             'sub_level_category', 'sub_level_category_name',
             'has_description', 'unit', 'landed_cost_price', 'landed_cost_unit', 
@@ -827,9 +826,15 @@ class InventorySerializer(serializers.ModelSerializer):
             'external_description', 'length', 'length_unit',
             'color', 'width', 'width_unit', 'height', 'height_unit',
             'volume', 'volume_unit', 'materials', 'photo', 'photo_url',
-            'list_price_currency', 'list_price', 'wholesale_price', 'remarks'
+            'list_price_currency', 'list_price', 'wholesale_price', 'remarks',
+            'stock_on_hand', 'reserved_pending_so', 'available_for_sale',
+            'incoming_pending_po', 'incoming_stock', 'total_expected'
         ]
-        read_only_fields = ['id', 'created_at', 'last_modified_at', 'created_by', 'last_modified_by']
+        read_only_fields = [
+            'id', 'created_at', 'last_modified_at', 'created_by', 'last_modified_by',
+            'stock_on_hand', 'reserved_pending_so', 'available_for_sale',
+            'incoming_pending_po', 'incoming_stock', 'total_expected'
+        ]
     
     def get_brand_name(self, obj):
         return obj.brand.name if obj.brand else None
