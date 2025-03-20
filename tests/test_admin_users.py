@@ -15,11 +15,11 @@ class UserViewTests(TestCase):
         # Create admin user
         self.admin_user = User.objects.create_user(
             username='adminuser',
-            email='admin@example.com',
             password='adminpassword123',
             first_name='Admin',
             last_name='User',
             role='admin',
+            status='active',
             user_access=['admin'],
             admin_access=['users', 'inventory']
         )
@@ -27,11 +27,11 @@ class UserViewTests(TestCase):
         # Create regular users
         self.user1 = User.objects.create_user(
             username='user1',
-            email='user1@example.com',
             password='password123',
             first_name='User',
             last_name='One',
             role='user',
+            status='active',
             user_access=['inventory'],
             admin_access=[]
         )
@@ -39,11 +39,11 @@ class UserViewTests(TestCase):
         # Create supervisor user with admin access
         self.user2 = User.objects.create_user(
             username='user2',
-            email='user2@example.com',
             password='password123',
             first_name='User',
             last_name='Two',
             role='supervisor',
+            status='active',
             user_access=['warehouse'],
             admin_access=['warehouses', 'inventory']
         )
@@ -58,11 +58,11 @@ class UserViewTests(TestCase):
         # New user data for creation tests
         self.new_user_data = {
             'username': 'newuser',
-            'email': 'new@example.com',
             'password': 'newpassword123',
             'first_name': 'New',
             'last_name': 'User',
             'role': 'supervisor',
+            'status': 'active',
             'user_access': ['inventory', 'warehouse'],
             'admin_access': ['inventory'],
             'is_active': True
@@ -72,6 +72,7 @@ class UserViewTests(TestCase):
         self.update_data = {
             'first_name': 'Updated',
             'last_name': 'Name',
+            'status': 'active',
             'user_access': ['finance'],
             'admin_access': ['users']
         }
@@ -129,10 +130,10 @@ class UserViewTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(response.data['success'])
         self.assertEqual(response.data['data']['username'], 'newuser')
-        self.assertEqual(response.data['data']['email'], 'new@example.com')
         self.assertEqual(response.data['data']['first_name'], 'New')
         self.assertEqual(response.data['data']['last_name'], 'User')
         self.assertEqual(response.data['data']['role'], 'supervisor')
+        self.assertEqual(response.data['data']['status'], 'active')
         self.assertEqual(response.data['data']['user_access'], ['inventory', 'warehouse'])
         self.assertEqual(response.data['data']['admin_access'], ['inventory'])
 
@@ -140,7 +141,6 @@ class UserViewTests(TestCase):
         """Test creating a user with invalid data"""
         invalid_data = {
             'username': '',  # Empty username
-            'email': 'invalid-email',  # Invalid email
             'password': 'short',  # Short password
             'admin_access': ['invalid_section']  # Invalid admin access
         }
@@ -167,7 +167,6 @@ class UserViewTests(TestCase):
     def test_update_user_invalid_data(self):
         """Test updating a user with invalid data"""
         invalid_data = {
-            'email': 'invalid-email',  # Invalid email
             'admin_access': ['invalid_section']  # Invalid admin access
         }
         response = self.client.put(self.user_detail_url, invalid_data, format='json')

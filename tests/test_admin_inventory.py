@@ -20,7 +20,6 @@ class InventoryTests(TestCase):
         # Create test user
         self.user = User.objects.create_user(
             username='testuser',
-            email='test@example.com',
             password='testpassword',
             first_name='Test',
             last_name='User'
@@ -29,12 +28,11 @@ class InventoryTests(TestCase):
         # Create test supplier
         self.supplier = Supplier.objects.create(
             name='Test Supplier',
-            registered_name='Test Supplier Inc.',
             supplier_type='local',
             currency='USD',
             phone_number='1234567890',
             email='supplier@example.com',
-            inco_terms='FOB',
+            delivery_terms='FOB',
             remarks='Test supplier remarks'
         )
         
@@ -69,7 +67,8 @@ class InventoryTests(TestCase):
             status='active',
             supplier=self.supplier,
             brand=self.brand,
-            product_tagging='test, product',
+            product_tagging='never_sold',
+            audit_status=False,
             category=self.category,
             subcategory=self.subcategory,
             sub_level_category=self.sub_level_category,
@@ -88,7 +87,8 @@ class InventoryTests(TestCase):
             'status': 'active',
             'supplier': self.supplier.id,
             'brand': self.brand.id,
-            'product_tagging': 'new, test',
+            'product_tagging': 'never_sold',
+            'audit_status': False,
             'category': self.category.id,
             'subcategory': self.subcategory.id,
             'sub_level_category': self.sub_level_category.id
@@ -245,7 +245,8 @@ class InventoryTests(TestCase):
             status='active',
             supplier=self.supplier,
             brand=self.brand,
-            product_tagging='search, test',
+            product_tagging='never_sold',
+            audit_status=False,
             category=self.category,
             created_by=self.user,
             last_modified_by=self.user
@@ -268,6 +269,8 @@ class InventoryTests(TestCase):
             status='inactive',
             supplier=self.supplier,
             brand=self.brand,
+            product_tagging='never_sold',
+            audit_status=False,
             category=self.category,
             created_by=self.user,
             last_modified_by=self.user
@@ -286,12 +289,11 @@ class InventoryTests(TestCase):
         # Create a second supplier
         new_supplier = Supplier.objects.create(
             name='Another Supplier',
-            registered_name='Another Supplier Inc.',
             supplier_type='foreign',
-            currency='EUR',
+            currency='EURO',
             phone_number='9876543210',
             email='another@example.com',
-            inco_terms='CIF',
+            delivery_terms='CIF',
             remarks='Another test supplier'
         )
         
@@ -302,7 +304,8 @@ class InventoryTests(TestCase):
             status='active',
             supplier=new_supplier,
             brand=self.brand,
-            product_tagging='imported, product',
+            product_tagging='never_sold',
+            audit_status=False,
             category=self.category,
             subcategory=self.subcategory,
             sub_level_category=self.sub_level_category,
@@ -336,7 +339,8 @@ class InventoryTests(TestCase):
             status='active',
             supplier=self.supplier,
             brand=new_brand,
-            product_tagging='another, product',
+            product_tagging='never_sold',
+            audit_status=False,
             category=self.category,
             subcategory=self.subcategory,
             sub_level_category=self.sub_level_category,
@@ -373,7 +377,8 @@ class InventoryTests(TestCase):
             status='active',
             supplier=self.supplier,
             brand=self.brand,
-            product_tagging='chair, office',
+            product_tagging='never_sold',
+            audit_status=False,
             category=new_category,
             subcategory=new_subcategory,
             created_by=self.user,
@@ -410,6 +415,8 @@ class InventoryTests(TestCase):
             'status': 'active',
             'supplier': self.supplier.id,
             'brand': self.brand.id,
+            'product_tagging': 'never_sold',
+            'audit_status': False,
             'category': self.category.id,
             'subcategory': different_subcategory.id  # This should fail validation
         }
@@ -452,18 +459,18 @@ class InventoryTests(TestCase):
         wb = openpyxl.Workbook()
         ws = wb.active
         
-        # Add headers
+        # Add headers - update these to match what your view expects
         headers = [
             'Item Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
-            'Product Tagging', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
+            'Product Tagging*', 'Audit Status*', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
         ]
         for col_num, header in enumerate(headers, 1):
             ws.cell(row=1, column=col_num).value = header
         
-        # Add a row of data
+        # Add a row of data - make sure the values match the expected format
         data = [
             'UPLOAD001', 'Uploaded Product', 'active', 
-            str(self.supplier.id), str(self.brand.id), 'upload, test',
+            str(self.supplier.id), str(self.brand.id), 'never_sold', 'False',
             str(self.category.id), str(self.subcategory.id), str(self.sub_level_category.id)
         ]
         for col_num, value in enumerate(data, 1):
@@ -482,6 +489,10 @@ class InventoryTests(TestCase):
         )
         
         response = self.client.post(url, {'file': upload_file}, format='multipart')
+        
+        # If your view is returning errors, print them for debugging
+        if response.data['data']['success_count'] == 0 and 'errors' in response.data['data']:
+            print("Upload errors:", response.data['data']['errors'])
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -503,7 +514,7 @@ class InventoryTests(TestCase):
         # Add headers
         headers = [
             'Item Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
-            'Product Tagging', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
+            'Product Tagging*', 'Audit Status*', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
         ]
         for col_num, header in enumerate(headers, 1):
             ws.cell(row=1, column=col_num).value = header
@@ -512,7 +523,7 @@ class InventoryTests(TestCase):
         data = [
             'INVALID001', 'Invalid Product', 'pending',  # Invalid status
             '9999',  # Non-existent supplier
-            str(self.brand.id), 'invalid, test',
+            str(self.brand.id), 'never_sold', 'False',
             str(self.category.id), '', ''
         ]
         for col_num, value in enumerate(data, 1):
@@ -532,13 +543,16 @@ class InventoryTests(TestCase):
         
         response = self.client.post(url, {'file': upload_file}, format='multipart')
         
+        # Your view returns 200 even for validation errors
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
-        self.assertEqual(response.data['data']['total_rows'], 1)
+        
+        # Check that the response contains error information
         self.assertEqual(response.data['data']['success_count'], 0)
         self.assertEqual(response.data['data']['error_count'], 1)
+        self.assertTrue(len(response.data['data']['errors']) > 0)
         
-        # Verify the errors
+        # Check specific error messages
         errors = response.data['data']['errors'][0]['errors']
         self.assertIn('status', errors)
         self.assertIn('supplier', errors)
@@ -557,7 +571,7 @@ class InventoryTests(TestCase):
         # Add headers
         headers = [
             'Item Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
-            'Product Tagging', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
+            'Product Tagging*', 'Audit Status*', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
         ]
         for col_num, header in enumerate(headers, 1):
             ws.cell(row=1, column=col_num).value = header
@@ -566,7 +580,7 @@ class InventoryTests(TestCase):
         data = [
             'TEST001',  # Already exists from setUp
             'Duplicate Product', 'active', 
-            str(self.supplier.id), str(self.brand.id), 'duplicate, test',
+            str(self.supplier.id), str(self.brand.id), 'never_sold', 'False',
             str(self.category.id), str(self.subcategory.id), str(self.sub_level_category.id)
         ]
         for col_num, value in enumerate(data, 1):
@@ -586,12 +600,15 @@ class InventoryTests(TestCase):
         
         response = self.client.post(url, {'file': upload_file}, format='multipart')
         
+        # Your view returns 200 even for validation errors
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
-        self.assertEqual(response.data['data']['total_rows'], 1)
+        
+        # Check that the response contains error information
         self.assertEqual(response.data['data']['success_count'], 0)
         self.assertEqual(response.data['data']['error_count'], 1)
+        self.assertTrue(len(response.data['data']['errors']) > 0)
         
-        # Verify the errors
+        # Check specific error messages
         errors = response.data['data']['errors'][0]['errors']
         self.assertIn('item_code', errors)

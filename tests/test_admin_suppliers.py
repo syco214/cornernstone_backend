@@ -16,7 +16,6 @@ class SupplierViewTests(TestCase):
         # Create test user
         self.user = User.objects.create_user(
             username='testuser',
-            email='test@example.com',
             password='testpassword123',
             is_staff=True
         )
@@ -24,23 +23,21 @@ class SupplierViewTests(TestCase):
         # Create test suppliers
         self.supplier1 = Supplier.objects.create(
             name='Test Supplier 1',
-            registered_name='Test Registered Name 1',
             supplier_type='local',
             currency='USD',
             phone_number='123-456-7890',
             email='supplier1@example.com',
-            inco_terms='FOB',
+            delivery_terms='FOB',
             remarks='Test remarks'
         )
         
         self.supplier2 = Supplier.objects.create(
             name='Test Supplier 2',
-            registered_name='Test Registered Name 2',
             supplier_type='foreign',
-            currency='EUR',
+            currency='EURO',
             phone_number='987-654-3210',
             email='supplier2@example.com',
-            inco_terms='CIF',
+            delivery_terms='CIF',
             remarks='Another test remarks'
         )
         
@@ -74,17 +71,14 @@ class SupplierViewTests(TestCase):
             beneficiary_address='123 Beneficiary St, Beneficiary City'
         )
         
-        # Create payment term for supplier1
+        # Create payment term for supplier1 with new structure
         self.payment_term1 = SupplierPaymentTerm.objects.create(
             supplier=self.supplier1,
             name='Net 30',
             credit_limit=10000.00,
-            stock_payment_terms='Net 30',
-            stock_dp_percentage=0.00,
-            stock_terms_days=30,
-            import_payment_terms='LC 60',
-            import_dp_percentage=30.00,
-            import_terms_days=60
+            payment_terms='Net 30',
+            dp_percentage=0.00,
+            terms_days=30
         )
         
         # Set up API client
@@ -133,12 +127,11 @@ class SupplierViewTests(TestCase):
         """Test creating a new supplier with related data."""
         data = {
             'name': 'New Test Supplier',
-            'registered_name': 'New Test Registered Name',
             'supplier_type': 'local',
             'currency': 'USD',
             'phone_number': '555-123-4567',
             'email': 'newsupplier@example.com',
-            'inco_terms': 'EXW',
+            'delivery_terms': 'EXW',
             'remarks': 'New supplier remarks',
             'addresses': [
                 {
@@ -170,12 +163,9 @@ class SupplierViewTests(TestCase):
             'payment_term': {
                 'name': 'Net 45',
                 'credit_limit': 15000.00,
-                'stock_payment_terms': 'Net 45',
-                'stock_dp_percentage': 0.00,
-                'stock_terms_days': 45,
-                'import_payment_terms': 'TT',
-                'import_dp_percentage': 50.00,
-                'import_terms_days': 30
+                'payment_terms': 'Net 45',
+                'dp_percentage': 0.00,
+                'terms_days': 45
             }
         }
         
@@ -252,12 +242,9 @@ class SupplierViewTests(TestCase):
             'payment_term': {
                 'name': 'Updated Terms',
                 'credit_limit': 20000.00,
-                'stock_payment_terms': 'Net 60',
-                'stock_dp_percentage': 10.00,
-                'stock_terms_days': 60,
-                'import_payment_terms': 'LC 90',
-                'import_dp_percentage': 40.00,
-                'import_terms_days': 90
+                'payment_terms': 'Net 60',
+                'dp_percentage': 10.00,
+                'terms_days': 60
             }
         }
         
@@ -297,6 +284,9 @@ class SupplierViewTests(TestCase):
         self.payment_term1.refresh_from_db()
         self.assertEqual(self.payment_term1.name, 'Updated Terms')
         self.assertEqual(self.payment_term1.credit_limit, 20000.00)
+        self.assertEqual(self.payment_term1.payment_terms, 'Net 60')
+        self.assertEqual(self.payment_term1.dp_percentage, 10.00)
+        self.assertEqual(self.payment_term1.terms_days, 60)
     
     def test_delete_supplier(self):
         """Test deleting a supplier."""
