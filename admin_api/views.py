@@ -79,21 +79,37 @@ class UserView(APIView, PageNumberPagination):
             })
         
         # Otherwise, return a list of users
-        # Get search parameters
-        search = request.query_params.get('search', '')
+        # Get search parameters for specific fields
+        username_search = request.query_params.get('username', '')
+        first_name_search = request.query_params.get('first_name', '')
+        last_name_search = request.query_params.get('last_name', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
         sort_by = request.query_params.get('sort_by', 'id')
         sort_direction = request.query_params.get('sort_direction', 'asc')
 
         # Query users
         users = CustomUser.objects.all()
 
-        # Apply search filter
-        if search:
+        # Apply field-specific search filters
+        if username_search:
+            users = users.filter(username__icontains=username_search)
+        
+        if first_name_search:
+            users = users.filter(first_name__icontains=first_name_search)
+        
+        if last_name_search:
+            users = users.filter(last_name__icontains=last_name_search)
+
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([username_search, first_name_search, last_name_search]):
             users = users.filter(
-                Q(first_name__icontains=search) |
-                Q(last_name__icontains=search) |
-                Q(username__icontains=search) |
-                Q(email__icontains=search)
+                Q(first_name__icontains=general_search) |
+                Q(last_name__icontains=general_search) |
+                Q(username__icontains=general_search)
             )
 
         # Apply sorting

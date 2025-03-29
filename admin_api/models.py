@@ -22,13 +22,18 @@ ADMIN_ACCESS_OPTIONS = [
 USER_ACCESS_OPTIONS = [
     'inventory',
     'quotations',
+    'reservation_slips',
     'sales_orders',
+    'accounting_aging_reports',
+    'accounting_account_receivables',
+    'accounting_workstreams',
     'importation',
-    'warehouse',
     'delivery',
-    'payment',
-    'customers',
-    'sampling',
+    'warehouse_inbound',
+    'warehouse_delivery',
+    'warehouse_audit',
+    'shipments',
+    'calendar',
 ]
 
 # Define role options as simple constants
@@ -55,7 +60,7 @@ class CustomUser(AbstractUser):
     )
     user_access = ArrayField(
         models.CharField(
-            max_length=20, 
+            max_length=40, 
             choices=[(access, access.capitalize()) for access in USER_ACCESS_OPTIONS]
         ),
         blank=True,
@@ -63,7 +68,7 @@ class CustomUser(AbstractUser):
     )
     admin_access = ArrayField(
         models.CharField(
-            max_length=20, 
+            max_length=40, 
             choices=[(access, access.capitalize()) for access in ADMIN_ACCESS_OPTIONS]
         ),
         blank=True,
