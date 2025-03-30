@@ -232,20 +232,46 @@ class BrandView(APIView, PageNumberPagination):
             })
         
         # Otherwise, return a list of brands
-        # Get search parameters
-        search = request.query_params.get('search', '')
+        # Get search parameters for specific fields
+        id_search = request.query_params.get('id', '')
+        name_search = request.query_params.get('name', '')
+        made_in_search = request.query_params.get('made_in', '')
+        show_made_in = request.query_params.get('show_made_in', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
         sort_by = request.query_params.get('sort_by', 'name')
         sort_direction = request.query_params.get('sort_direction', 'asc')
 
         # Query brands
         brands = Brand.objects.all()
 
-        # Apply search filter
-        if search:
+        # Apply field-specific search filters
+        if id_search:
+            try:
+                brands = brands.filter(id=int(id_search))
+            except ValueError:
+                # If id_search is not a valid integer, return empty queryset
+                brands = Brand.objects.none()
+        
+        if name_search:
+            brands = brands.filter(name__icontains=name_search)
+        
+        if made_in_search:
+            brands = brands.filter(made_in__icontains=made_in_search)
+        
+        if show_made_in:
+            show_made_in_bool = show_made_in.lower() in ['true', '1', 'yes']
+            brands = brands.filter(show_made_in=show_made_in_bool)
+
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([id_search, name_search, made_in_search, show_made_in]):
             brands = brands.filter(
-                Q(name__icontains=search) |
-                Q(made_in__icontains=search) |
-                Q(remarks__icontains=search)
+                Q(name__icontains=general_search) |
+                Q(made_in__icontains=general_search) |
+                Q(remarks__icontains=general_search)
             )
 
         # Apply sorting
@@ -537,20 +563,41 @@ class WarehouseView(APIView, PageNumberPagination):
                 'data': serializer.data
             })
         
-        # Get query parameters
-        search = request.query_params.get('search', '')
+        # Get search parameters for specific fields
+        id_search = request.query_params.get('id', '')
+        name_search = request.query_params.get('name', '')
+        city_search = request.query_params.get('city', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
         sort_by = request.query_params.get('sort_by', 'name')
         sort_direction = request.query_params.get('sort_direction', 'asc')
         
         # Query warehouses
         warehouses = Warehouse.objects.all()
 
-        # Apply search filter
-        if search:
+        # Apply field-specific search filters
+        if id_search:
+            try:
+                warehouses = warehouses.filter(id=int(id_search))
+            except ValueError:
+                # If id_search is not a valid integer, return empty queryset
+                warehouses = Warehouse.objects.none()
+        
+        if name_search:
+            warehouses = warehouses.filter(name__icontains=name_search)
+        
+        if city_search:
+            warehouses = warehouses.filter(city__icontains=city_search)
+
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([id_search, name_search, city_search]):
             warehouses = warehouses.filter(
-                Q(name__icontains=search) |
-                Q(city__icontains=search) |
-                Q(address__icontains=search)
+                Q(name__icontains=general_search) |
+                Q(city__icontains=general_search) |
+                Q(address__icontains=general_search)
             )
 
         # Apply sorting
@@ -652,25 +699,34 @@ class SupplierView(APIView, PageNumberPagination):
                 'data': serializer.data
             })
         
-        # Get query parameters
-        search = request.query_params.get('search', '')
+        # Get search parameters for specific fields
+        name_search = request.query_params.get('name', '')
+        supplier_type = request.query_params.get('supplier_type', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
         sort_by = request.query_params.get('sort_by', 'name')
         sort_direction = request.query_params.get('sort_direction', 'asc')
-        supplier_type = request.query_params.get('supplier_type', '')
         
         # Query suppliers
         suppliers = Supplier.objects.all()
 
-        # Apply search filter
-        if search:
-            suppliers = suppliers.filter(
-                Q(name__icontains=search) |
-                Q(email__icontains=search)
-            )
+        # Apply field-specific search filters
+        if name_search:
+            suppliers = suppliers.filter(name__icontains=name_search)
         
         # Filter by supplier type if provided
         if supplier_type and supplier_type in dict(Supplier.SUPPLIER_TYPES):
             suppliers = suppliers.filter(supplier_type=supplier_type)
+
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([name_search, supplier_type]):
+            suppliers = suppliers.filter(
+                Q(name__icontains=general_search) |
+                Q(email__icontains=general_search)
+            )
 
         # Apply sorting
         sort_prefix = '-' if sort_direction == 'desc' else ''
@@ -690,7 +746,9 @@ class SupplierView(APIView, PageNumberPagination):
                         'count': paginated_response.data['count'],
                         'next': paginated_response.data['next'],
                         'previous': paginated_response.data['previous'],
-                    }
+                    },
+                    'currency_options': ['USD', 'EURO', 'RMB', 'PHP'],
+                    'supplier_type_options': ['local', 'foreign'],
                 }
             })
 
@@ -698,7 +756,11 @@ class SupplierView(APIView, PageNumberPagination):
         serializer = SupplierSerializer(suppliers, many=True)
         return Response({
             'success': True,
-            'data': serializer.data
+            'data': serializer.data,
+            'meta': {
+                'currency_options': ['USD', 'EURO', 'RMB', 'PHP'],
+                'supplier_type_options': ['local', 'foreign'],
+            }
         })
 
     def post(self, request):
@@ -771,18 +833,35 @@ class ParentCompanyView(APIView, PageNumberPagination):
                 'data': serializer.data
             })
         
-        # Get query parameters
-        search = request.query_params.get('search', '')
+        # Get search parameters for specific fields
+        id_search = request.query_params.get('id', '')
+        name_search = request.query_params.get('name', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
         sort_by = request.query_params.get('sort_by', 'name')
         sort_direction = request.query_params.get('sort_direction', 'asc')
         
         # Query parent companies
         parent_companies = ParentCompany.objects.all()
 
-        # Apply search filter
-        if search:
+        # Apply field-specific search filters
+        if id_search:
+            try:
+                parent_companies = parent_companies.filter(id=int(id_search))
+            except ValueError:
+                # If id_search is not a valid integer, return empty queryset
+                parent_companies = ParentCompany.objects.none()
+        
+        if name_search:
+            parent_companies = parent_companies.filter(name__icontains=name_search)
+
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([id_search, name_search]):
             parent_companies = parent_companies.filter(
-                Q(name__icontains=search)
+                Q(name__icontains=general_search)
             )
 
         # Apply sorting
@@ -884,36 +963,56 @@ class CustomerView(APIView, PageNumberPagination):
                 'data': serializer.data
             })
         
-        # Get query parameters
-        search = request.query_params.get('search', '')
+        # Get search parameters for specific fields
+        name_search = request.query_params.get('name', '')
+        registered_name_search = request.query_params.get('registered_name', '')
+        parent_company_id = request.query_params.get('parent_company_id', '')
+        parent_company_name = request.query_params.get('parent_company_name', '')
+        
+        # Get other filter parameters
+        status = request.query_params.get('status', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
         sort_by = request.query_params.get('sort_by', 'name')
         sort_direction = request.query_params.get('sort_direction', 'asc')
-        status = request.query_params.get('status', '')
-        parent_company_id = request.query_params.get('parent_company_id', '')
         
         # Query customers
         customers = Customer.objects.all()
 
-        # Apply search filter
-        if search:
-            customers = customers.filter(
-                Q(name__icontains=search) |
-                Q(registered_name__icontains=search) |
-                Q(tin__icontains=search) |
-                Q(city__icontains=search)
-            )
+        # Apply field-specific search filters
+        if name_search:
+            customers = customers.filter(name__icontains=name_search)
         
-        # Filter by status if provided
-        if status and status in dict(Customer.STATUS_CHOICES):
-            customers = customers.filter(status=status)
-            
-        # Filter by parent company if provided
+        if registered_name_search:
+            customers = customers.filter(registered_name__icontains=registered_name_search)
+        
+        # Filter by parent company ID if provided
         if parent_company_id:
             try:
                 parent_company_id = int(parent_company_id)
                 customers = customers.filter(parent_company_id=parent_company_id)
             except ValueError:
                 pass
+        
+        # Filter by parent company name if provided
+        if parent_company_name:
+            customers = customers.filter(parent_company__name__icontains=parent_company_name)
+        
+        # Filter by status if provided
+        if status and status in dict(Customer.STATUS_CHOICES):
+            customers = customers.filter(status=status)
+
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([name_search, registered_name_search, parent_company_id, parent_company_name, status]):
+            customers = customers.filter(
+                Q(name__icontains=general_search) |
+                Q(registered_name__icontains=general_search) |
+                Q(tin__icontains=general_search) |
+                Q(city__icontains=general_search)
+            )
 
         # Apply sorting
         sort_prefix = '-' if sort_direction == 'desc' else ''
@@ -1014,27 +1113,46 @@ class BrokerView(APIView, PageNumberPagination):
                 'data': serializer.data
             })
         
-        # Get query parameters
-        search = request.query_params.get('search', '')
+        # Get search parameters for specific fields
+        company_name_search = request.query_params.get('company_name', '')
+        phone_number_search = request.query_params.get('phone_number', '')
+        email_search = request.query_params.get('email', '')
+        
+        # Get other filter parameters
+        payment_type = request.query_params.get('payment_type', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
         sort_by = request.query_params.get('sort_by', 'company_name')
         sort_direction = request.query_params.get('sort_direction', 'asc')
-        payment_type = request.query_params.get('payment_type', '')
         
         # Query brokers
         brokers = Broker.objects.all()
 
-        # Apply search filter
-        if search:
-            brokers = brokers.filter(
-                Q(company_name__icontains=search) |
-                Q(address__icontains=search) |
-                Q(email__icontains=search) |
-                Q(phone_number__icontains=search)
-            )
+        # Apply field-specific search filters
+        if company_name_search:
+            brokers = brokers.filter(company_name__icontains=company_name_search)
+        
+        if phone_number_search:
+            brokers = brokers.filter(phone_number__icontains=phone_number_search)
+        
+        if email_search:
+            brokers = brokers.filter(email__icontains=email_search)
         
         # Filter by payment type if provided
         if payment_type and payment_type in dict(Broker.PAYMENT_CHOICES):
             brokers = brokers.filter(payment_type=payment_type)
+
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([company_name_search, phone_number_search, email_search, payment_type]):
+            brokers = brokers.filter(
+                Q(company_name__icontains=general_search) |
+                Q(address__icontains=general_search) |
+                Q(email__icontains=general_search) |
+                Q(phone_number__icontains=general_search)
+            )
 
         # Apply sorting
         sort_prefix = '-' if sort_direction == 'desc' else ''
@@ -1135,27 +1253,46 @@ class ForwarderView(APIView, PageNumberPagination):
                 'data': serializer.data
             })
         
-        # Get query parameters
-        search = request.query_params.get('search', '')
+        # Get search parameters for specific fields
+        company_name_search = request.query_params.get('company_name', '')
+        phone_number_search = request.query_params.get('phone_number', '')
+        email_search = request.query_params.get('email', '')
+        
+        # Get other filter parameters
+        payment_type = request.query_params.get('payment_type', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
         sort_by = request.query_params.get('sort_by', 'company_name')
         sort_direction = request.query_params.get('sort_direction', 'asc')
-        payment_type = request.query_params.get('payment_type', '')
         
         # Query forwarders
         forwarders = Forwarder.objects.all()
 
-        # Apply search filter
-        if search:
-            forwarders = forwarders.filter(
-                Q(company_name__icontains=search) |
-                Q(address__icontains=search) |
-                Q(email__icontains=search) |
-                Q(phone_number__icontains=search)
-            )
+        # Apply field-specific search filters
+        if company_name_search:
+            forwarders = forwarders.filter(company_name__icontains=company_name_search)
+        
+        if phone_number_search:
+            forwarders = forwarders.filter(phone_number__icontains=phone_number_search)
+        
+        if email_search:
+            forwarders = forwarders.filter(email__icontains=email_search)
         
         # Filter by payment type if provided
         if payment_type and payment_type in dict(Forwarder.PAYMENT_CHOICES):
             forwarders = forwarders.filter(payment_type=payment_type)
+
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([company_name_search, phone_number_search, email_search, payment_type]):
+            forwarders = forwarders.filter(
+                Q(company_name__icontains=general_search) |
+                Q(address__icontains=general_search) |
+                Q(email__icontains=general_search) |
+                Q(phone_number__icontains=general_search)
+            )
 
         # Apply sorting
         sort_prefix = '-' if sort_direction == 'desc' else ''
@@ -1257,27 +1394,38 @@ class InventoryView(APIView, PageNumberPagination):
                 'data': serializer.data
             })
         
-        # Get query parameters
-        search = request.query_params.get('search', '')
-        sort_by = request.query_params.get('sort_by', 'item_code')
-        sort_direction = request.query_params.get('sort_direction', 'asc')
+        # Get search parameters for specific fields
+        item_code_search = request.query_params.get('item_code', '')
+        product_name_search = request.query_params.get('product_name', '')
+        brand_search = request.query_params.get('brand', '')
+        
+        # Get other filter parameters
         status_filter = request.query_params.get('status', '')
         supplier_id = request.query_params.get('supplier_id', '')
         brand_id = request.query_params.get('brand_id', '')
         category_id = request.query_params.get('category_id', '')
         
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
+        sort_by = request.query_params.get('sort_by', 'item_code')
+        sort_direction = request.query_params.get('sort_direction', 'asc')
+        
         # Query inventory items
         inventory_items = Inventory.objects.all()
 
-        # Apply search filter
-        if search:
-            inventory_items = inventory_items.filter(
-                Q(item_code__icontains=search) |
-                Q(product_name__icontains=search) |
-                Q(product_tagging__icontains=search)
-            )
+        # Apply field-specific search filters
+        if item_code_search:
+            inventory_items = inventory_items.filter(item_code__icontains=item_code_search)
         
-        # Apply filters
+        if product_name_search:
+            inventory_items = inventory_items.filter(product_name__icontains=product_name_search)
+        
+        if brand_search:
+            inventory_items = inventory_items.filter(brand__name__icontains=brand_search)
+        
+        # Apply other filters
         if status_filter and status_filter in dict(Inventory.STATUS_CHOICES):
             inventory_items = inventory_items.filter(status=status_filter)
             
@@ -1306,6 +1454,15 @@ class InventoryView(APIView, PageNumberPagination):
             except ValueError:
                 pass
 
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([item_code_search, product_name_search, brand_search, 
+                                      status_filter, supplier_id, brand_id, category_id]):
+            inventory_items = inventory_items.filter(
+                Q(item_code__icontains=general_search) |
+                Q(product_name__icontains=general_search) |
+                Q(product_tagging__icontains=general_search)
+            )
+
         # Apply sorting
         sort_prefix = '-' if sort_direction == 'desc' else ''
         inventory_items = inventory_items.order_by(f'{sort_prefix}{sort_by}')
@@ -1329,7 +1486,7 @@ class InventoryView(APIView, PageNumberPagination):
             })
 
         # Fallback if pagination fails
-        serializer = InventorySerializer(inventory_items, many=True)
+        serializer = InventorySerializer(inventory_items, many=True, context={'request': request})
         return Response({
             'success': True,
             'data': serializer.data
