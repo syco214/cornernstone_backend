@@ -44,7 +44,7 @@ class UserViewTests(TestCase):
             last_name='Two',
             role='supervisor',
             status='active',
-            user_access=['warehouse'],
+            user_access=['delivery'],
             admin_access=['warehouses', 'inventory']
         )
         
@@ -63,7 +63,7 @@ class UserViewTests(TestCase):
             'last_name': 'User',
             'role': 'supervisor',
             'status': 'active',
-            'user_access': ['inventory', 'warehouse'],
+            'user_access': ['inventory', 'delivery'],
             'admin_access': ['inventory'],
             'is_active': True
         }
@@ -134,7 +134,7 @@ class UserViewTests(TestCase):
         self.assertEqual(response.data['data']['last_name'], 'User')
         self.assertEqual(response.data['data']['role'], 'supervisor')
         self.assertEqual(response.data['data']['status'], 'active')
-        self.assertEqual(response.data['data']['user_access'], ['inventory', 'warehouse'])
+        self.assertEqual(response.data['data']['user_access'], ['inventory', 'delivery'])
         self.assertEqual(response.data['data']['admin_access'], ['inventory'])
 
     def test_create_user_invalid_data(self):
