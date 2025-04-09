@@ -185,7 +185,7 @@ class SupplierContactSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = SupplierContact
-        fields = ['id', 'contact_person', 'position', 'department']
+        fields = ['id', 'contact_person', 'position', 'department', 'email', 'mobile_number', 'office_number']
         read_only_fields = ['id']
 
 class SupplierPaymentTermSerializer(serializers.ModelSerializer):
@@ -417,7 +417,7 @@ class CustomerContactSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CustomerContact
-        fields = ['id', 'contact_person', 'position', 'department']
+        fields = ['id', 'contact_person', 'position', 'department', 'email', 'mobile_number', 'office_number']
         read_only_fields = ['id']
 
 class CustomerPaymentTermSerializer(serializers.ModelSerializer):

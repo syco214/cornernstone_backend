@@ -83,6 +83,7 @@ class UserView(APIView, PageNumberPagination):
         username_search = request.query_params.get('username', '')
         first_name_search = request.query_params.get('first_name', '')
         last_name_search = request.query_params.get('last_name', '')
+        role_search = request.query_params.get('role', '')
         
         # Get general search parameter
         general_search = request.query_params.get('search', '')
@@ -103,13 +104,17 @@ class UserView(APIView, PageNumberPagination):
         
         if last_name_search:
             users = users.filter(last_name__icontains=last_name_search)
+            
+        if role_search:
+            users = users.filter(role__iexact=role_search)
 
         # Apply general search filter if no specific filters are provided
-        if general_search and not any([username_search, first_name_search, last_name_search]):
+        if general_search and not any([username_search, first_name_search, last_name_search, role_search]):
             users = users.filter(
                 Q(first_name__icontains=general_search) |
                 Q(last_name__icontains=general_search) |
-                Q(username__icontains=general_search)
+                Q(username__icontains=general_search) |
+                Q(role__icontains=general_search)
             )
 
         # Apply sorting
