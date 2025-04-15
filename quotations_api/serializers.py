@@ -1,429 +1,436 @@
 from rest_framework import serializers
 from django.db import transaction
-from django.contrib.auth import get_user_model
-from decimal import Decimal
-
+from django.conf import settings # Keep for AUTH_USER_MODEL if used implicitly
 from .models import (
-    Quotation,
-    QuotationItem,
-    QuotationSalesAgent,
-    QuotationAdditionalControl,
-    QuotationAttachment,
-    LastQuotedPrice,
-    TermCondition,
-    PaymentTermOption,
-    DeliveryOption,
-    OtherOption,
+    Quotation, QuotationItem, QuotationSalesAgent,
+    QuotationAdditionalControls, QuotationAttachment, TermsCondition,
+    PaymentTerm, DeliveryOption, OtherOption
 )
-# Assuming these serializers exist for related models
-from admin_api.serializers import (
-    CustomerSerializer, # Use a simpler version if needed for nesting
-    UserSerializer, # Basic user info
-    CustomerContactSerializer, # Basic contact info
-    InventorySerializer, # Basic inventory info
-)
+# Corrected imports from admin_api
 from admin_api.models import (
-    Customer, CustomerContact, Inventory
+    Customer, CustomerContact, Inventory, Brand, CustomUser # Added CustomUser
 )
+from admin_api.serializers import (
+    CustomerContactSerializer, BrandSerializer, UserSerializer # Added UserSerializer
+)
+# Removed incorrect import: from users.serializers import UserSerializer
 
+# --- Reusable Option Serializers ---
 
-User = get_user_model()
-
-# --- Read Serializers (for GET requests) ---
-
-class TermConditionSerializer(serializers.ModelSerializer):
+class TermsConditionSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TermCondition
-        fields = ['id', 'name', 'text', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        model = TermsCondition
+        fields = ['id', 'name']
 
-class PaymentTermOptionSerializer(serializers.ModelSerializer):
+class PaymentTermSerializer(serializers.ModelSerializer):
     class Meta:
-        model = PaymentTermOption
-        fields = ['id', 'name', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        model = PaymentTerm
+        fields = ['id', 'name']
 
 class DeliveryOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = DeliveryOption
-        fields = ['id', 'name', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'name']
 
 class OtherOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = OtherOption
-        fields = ['id', 'name', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'name']
 
+# --- Nested Component Serializers ---
 
-class QuotationAttachmentSerializer(serializers.ModelSerializer):
+class InventoryNestedSerializer(serializers.ModelSerializer):
+    """Minimal inventory details for nesting."""
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    # Ensure stock_quantity is in the Inventory model if used here
+    stock_quantity = serializers.IntegerField(read_only=True)
+
     class Meta:
-        model = QuotationAttachment
-        fields = ['id', 'file', 'uploaded_at']
-
+        model = Inventory
+        fields = [
+            'id', 'item_code', 'brand_name', 'unit', 'wholesale_price',
+            'photo', 'external_description', 'stock_quantity'
+        ]
+        read_only_fields = fields
 
 class QuotationItemSerializer(serializers.ModelSerializer):
-    # Calculated fields
-    inventory_status = serializers.CharField(read_only=True)
-    net_selling = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    total_selling = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
-    last_quoted_price = serializers.SerializerMethodField()
+    """Serializer for Quotation Items (Read & Write)."""
+    inventory_id = serializers.PrimaryKeyRelatedField(
+        queryset=Inventory.objects.all(), source='inventory', write_only=True
+    )
+    brand_id = serializers.PrimaryKeyRelatedField(
+        queryset=Brand.objects.all(), source='brand', write_only=True, required=False, allow_null=True
+    )
 
-    # Basic inventory info for context
-    inventory_detail = InventorySerializer(source='inventory', read_only=True)
+    inventory_detail = InventoryNestedSerializer(source='inventory', read_only=True)
+    brand_detail = BrandSerializer(source='brand', read_only=True)
+    made_in = serializers.SerializerMethodField(read_only=True)
+    inventory_status = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = QuotationItem
         fields = [
             'id',
-            'inventory', # Keep FK for potential linking/updates
-            'inventory_detail', # Read-only nested data
-            'item_code',
-            'brand_name',
+            'inventory_id', # Write
+            'inventory_detail', # Read
+            'item_code', # Read-only (populated from inventory)
+            'brand_id', # Write
+            'brand_detail', # Read
             'show_brand',
-            'made_in',
-            'show_made_in',
-            'wholesale_price',
-            'unit',
-            'photo',
-            'show_photo',
-            'external_description',
+            'made_in', # Read (calculated)
+            'wholesale_price', # Override
             'actual_landed_cost',
             'estimated_landed_cost',
             'notes',
+            'unit', # Override
             'quantity',
+            'photo', # Override (handle file upload separately if needed)
+            'show_photo',
             'baseline_margin',
-            'inventory_status', # Property
-            'last_quoted_price',
+            'inventory_status', # Read (calculated)
+            'external_description', # Override
             'has_discount',
             'discount_type',
             'discount_percentage',
             'discount_value',
-            'net_selling', # Property
-            'total_selling', # Property
+            'net_selling', # Read-only (calculated in model save)
+            'total_selling', # Read-only (calculated in model save)
         ]
-        read_only_fields = [
-            'item_code', 'brand_name', 'made_in', 'unit',
-            'external_description', 'inventory_status',
-            'net_selling', 'total_selling', 'last_quoted_price',
-            'inventory_detail',
-        ]
+        read_only_fields = ['id', 'item_code', 'net_selling', 'total_selling', 'made_in', 'inventory_status']
 
-    def get_last_quoted_price(self, obj: QuotationItem) -> Decimal | None:
-        # Implement logic to fetch from LastQuotedPrice model
-        # Ensure the related quotation object is available (might need prefetching in view)
-        if not hasattr(obj, 'quotation') or not hasattr(obj.quotation, 'customer'):
-             # Handle cases where related objects might not be loaded (e.g., during creation serialization)
-             return None
-        last_price_obj = LastQuotedPrice.objects.filter(
-            inventory=obj.inventory,
-            customer=obj.quotation.customer
-        ).order_by('-last_quoted_date').first() # Ensure we get the latest one
-        return last_price_obj.last_price if last_price_obj else None
-
-
-class QuotationSalesAgentSerializer(serializers.ModelSerializer):
-    agent_name = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = QuotationSalesAgent
-        fields = ('id', 'agent', 'role', 'agent_name')
-        read_only_fields = ('quotation',)
-    
-    def get_agent_name(self, obj):
-        return f"{obj.agent.first_name} {obj.agent.last_name}" if obj.agent else ""
-
-
-class QuotationAdditionalControlSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = QuotationAdditionalControl
-        exclude = ['id', 'quotation'] # Exclude FK
-
-
-class QuotationListSerializer(serializers.ModelSerializer):
-    """Serializer for listing quotations (less detail)."""
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
-    main_sales_agent = serializers.SerializerMethodField()
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
-
-    class Meta:
-        model = Quotation
-        fields = [
-            'id',
-            'quote_number',
-            'status',
-            'status_display',
-            'customer',
-            'customer_name',
-            'date',
-            'total_amount',
-            'main_sales_agent',
-            'currency',
-            'expiry_date',
-            'created_on',
-        ]
-
-    def get_main_sales_agent(self, obj: Quotation) -> str | None:
-        main_agent = obj.sales_agents.filter(role=QuotationSalesAgent.Role.MAIN).first()
-        if main_agent:
-            # Use get_full_name() if available, otherwise username
-            return main_agent.agent.get_full_name() or main_agent.agent.username
+    def get_made_in(self, obj: QuotationItem) -> str | None:
+        if obj.show_brand and obj.brand and hasattr(obj.brand, 'made_in'):
+             return obj.brand.made_in
         return None
 
+    def get_inventory_status(self, obj: QuotationItem) -> str:
+        stock = obj.inventory.stock_quantity if obj.inventory and hasattr(obj.inventory, 'stock_quantity') else 0
+        quantity = obj.quantity
 
-class QuotationDetailSerializer(serializers.ModelSerializer):
-    """Serializer for retrieving a single quotation (full detail)."""
-    customer = CustomerSerializer(read_only=True)
-    created_by = UserSerializer(read_only=True)
-    last_modified_by = UserSerializer(read_only=True)
-    items = QuotationItemSerializer(many=True, read_only=True)
-    sales_agents = QuotationSalesAgentSerializer(many=True, read_only=True)
-    customer_contacts = CustomerContactSerializer(many=True, read_only=True)
-    additional_controls = QuotationAdditionalControlSerializer(read_only=True)
-    attachments = QuotationAttachmentSerializer(many=True, read_only=True)
-    terms_conditions = TermConditionSerializer(many=True, read_only=True)
-    payment_terms = PaymentTermOptionSerializer(many=True, read_only=True)
-    delivery_options = DeliveryOptionSerializer(many=True, read_only=True)
-    other_options = OtherOptionSerializer(many=True, read_only=True)
+        if quantity > 1:
+            if stock <= 0:
+                return "For Importation"
+            elif quantity > stock:
+                return f"{stock} pcs In Stock, Balance for Importation"
+            else:
+                return "In Stock"
+        else:
+            if stock <= 0:
+                return "For Importation"
+            else:
+                return f"{stock} pcs in stock"
+
+class QuotationSalesAgentSerializer(serializers.ModelSerializer):
+    """Serializer for Sales Agents linked to a Quotation."""
+    # Use the imported CustomUser for the queryset
+    agent_id = serializers.PrimaryKeyRelatedField(
+        queryset=CustomUser.objects.all(), source='agent', write_only=True
+    )
+    # Use the imported UserSerializer from admin_api
+    agent_detail = UserSerializer(source='agent', read_only=True)
+
+    class Meta:
+        model = QuotationSalesAgent
+        fields = ['id', 'agent_id', 'agent_detail', 'role']
+        read_only_fields = ['id']
+
+class QuotationAdditionalControlsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuotationAdditionalControls
+        exclude = ['quotation', 'id']
+
+class QuotationAttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField(read_only=True)
+    file_name = serializers.SerializerMethodField(read_only=True)
+    # Optional: Add uploader details if needed, using the correct UserSerializer
+    # uploaded_by_detail = UserSerializer(source='uploaded_by', read_only=True)
+
+    class Meta:
+        model = QuotationAttachment
+        fields = [
+            'id', 'file', 'file_url', 'file_name',
+            'uploaded_on', 'uploaded_by', # 'uploaded_by_detail'
+        ]
+        read_only_fields = ['id', 'file_url', 'file_name', 'uploaded_on', 'uploaded_by'] # uploaded_by is set implicitly
+
+    def get_file_url(self, obj: QuotationAttachment) -> str | None:
+        request = self.context.get('request')
+        if request and obj.file:
+            return request.build_absolute_uri(obj.file.url)
+        return None
+
+    def get_file_name(self, obj: QuotationAttachment) -> str | None:
+        if obj.file:
+            return obj.file.name.split('/')[-1] # Get base filename
+        return None
+
+# --- Main Quotation Serializers ---
+
+class QuotationListSerializer(serializers.ModelSerializer):
+    """Serializer for listing quotations."""
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    main_sales_agent_name = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     currency_display = serializers.CharField(source='get_currency_display', read_only=True)
-    customer_name = serializers.SerializerMethodField()
-    main_sales_agent_name = serializers.SerializerMethodField()
-    created_by_name = serializers.SerializerMethodField()
-    last_modified_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Quotation
         fields = [
-            'id', 'quote_number', 'status', 'status_display', 'customer', 'date',
-            'total_amount', 'created_by', 'created_on', 'last_modified_by',
-            'last_modified_on', 'purchase_request', 'expiry_date', 'currency',
-            'currency_display', 'notes', 'price_validity', 'validity_period',
-            'items', 'sales_agents', 'customer_contacts', 'additional_controls',
-            'attachments', 'terms_conditions', 'payment_terms', 'delivery_options',
-            'other_options', 'customer_name', 'main_sales_agent_name', 'created_by_name', 'last_modified_by_name'
+            'id', 'quote_number', 'status', 'status_display', 'customer', 'customer_name',
+            'date', 'total_amount', 'currency', 'currency_display',
+            'main_sales_agent_name', 'created_on',
         ]
 
-    def get_customer_name(self, obj):
-        return obj.customer.name if obj.customer else ""
-    
-    def get_main_sales_agent_name(self, obj):
-        main_agent = obj.sales_agents.filter(role='main').first()
-        if main_agent and main_agent.agent:
-            return f"{main_agent.agent.first_name} {main_agent.agent.last_name}"
-        return ""
-    
-    def get_created_by_name(self, obj):
-        if obj.created_by:
-            return f"{obj.created_by.first_name} {obj.created_by.last_name}"
-        return ""
-    
-    def get_last_modified_by_name(self, obj):
-        if obj.last_modified_by:
-            return f"{obj.last_modified_by.first_name} {obj.last_modified_by.last_name}"
-        return ""
+    def get_main_sales_agent_name(self, obj: Quotation) -> str | None:
+        main_agent_link = obj.sales_agents.filter(role=QuotationSalesAgent.Role.MAIN).first()
+        if main_agent_link and main_agent_link.agent:
+            # Use get_full_name() if available, otherwise username
+            return main_agent_link.agent.get_full_name() or main_agent_link.agent.username
+        return None
 
+class QuotationDetailSerializer(serializers.ModelSerializer):
+    """Serializer for retrieving a single quotation with full details."""
+    customer_detail = serializers.SerializerMethodField(read_only=True) # Use method field for flexibility
+    items = QuotationItemSerializer(many=True, read_only=True)
+    sales_agents = QuotationSalesAgentSerializer(many=True, read_only=True)
+    additional_controls = QuotationAdditionalControlsSerializer(read_only=True)
+    attachments = QuotationAttachmentSerializer(many=True, read_only=True)
+    customer_contacts = CustomerContactSerializer(many=True, read_only=True) # Use existing serializer
 
-# --- Write/Update Serializers (for POST/PUT/PATCH) ---
-# These will be more complex, especially for nested creates/updates.
-# We'll start with the basic structure and refine later.
+    # Include details for linked options
+    terms_conditions = TermsConditionSerializer(read_only=True)
+    payment_terms = PaymentTermSerializer(read_only=True)
+    delivery_options = DeliveryOptionSerializer(read_only=True)
+    other_options = OtherOptionSerializer(read_only=True)
 
-class QuotationItemWriteSerializer(serializers.ModelSerializer):
-    id = serializers.IntegerField(required=False) # For updates
-
-    class Meta:
-        model = QuotationItem
-        fields = [
-            'id',
-            'inventory', # Need FK to link to existing inventory
-            'show_brand',
-            # 'show_made_in', # This comes from Brand, not set here
-            'wholesale_price', # Allow override
-            'photo', # Allow override
-            'show_photo',
-            'actual_landed_cost',
-            'estimated_landed_cost',
-            'notes',
-            'quantity',
-            'baseline_margin',
-            'has_discount',
-            'discount_type',
-            'discount_percentage',
-            'discount_value',
-        ]
-        # No read_only_fields here as we are writing
-
-
-class QuotationSalesAgentWriteSerializer(serializers.ModelSerializer):
-    id = serializers.IntegerField(required=False)
+    # Display fields
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    currency_display = serializers.CharField(source='get_currency_display', read_only=True)
+    created_by = UserSerializer(read_only=True) # Use correct UserSerializer
+    last_modified_by = UserSerializer(read_only=True) # Use correct UserSerializer
 
     class Meta:
-        model = QuotationSalesAgent
-        fields = ['id', 'agent', 'role']
+        model = Quotation
+        fields = '__all__' # Include all fields from the model
 
+    def get_customer_detail(self, obj: Quotation) -> dict | None:
+        # Example: Return basic customer info. Adjust as needed.
+        if obj.customer:
+            return {
+                'id': obj.customer.id,
+                'name': obj.customer.name,
+                # Add other fields if required by the frontend form
+            }
+        return None
 
-class QuotationAdditionalControlWriteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = QuotationAdditionalControl
-        fields = [
-            'show_carton_packing',
-            'do_not_show_all_photos',
-            'highlight_item_notes',
-            'show_devaluation_clause',
-        ]
+    def get_fields(self):
+        """Pass context down to nested serializers (e.g., for request object)."""
+        fields = super().get_fields()
+        # Ensure context is passed to nested serializers that might need the request
+        fields['attachments'].context.update(self.context)
+        # Add others if they need context (e.g., ItemSerializer if photo URL needs request)
+        # fields['items'].context.update(self.context)
+        return fields
 
 
 class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
-    items = QuotationItemWriteSerializer(many=True, required=False)
-    sales_agents = QuotationSalesAgentWriteSerializer(many=True, required=False)
+    """Serializer for creating and updating quotations with nested data."""
+    # Nested writable serializers
+    items = QuotationItemSerializer(many=True, required=False)
+    sales_agents = QuotationSalesAgentSerializer(many=True, required=False)
+    additional_controls = QuotationAdditionalControlsSerializer(required=False)
+    # Note: Attachments are typically handled separately (e.g., dedicated upload endpoint)
+    # attachments = QuotationAttachmentSerializer(many=True, read_only=True) # Read-only here
+
+    # Writable FKs and M2M
+    customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all())
     customer_contacts = serializers.PrimaryKeyRelatedField(
-        queryset=CustomerContact.objects.all(),
-        many=True,
-        required=False
+        queryset=CustomerContact.objects.all(), many=True, required=False
     )
-    additional_controls = QuotationAdditionalControlWriteSerializer(required=False)
-    attachments = QuotationAttachmentSerializer(many=True, required=False)
-    terms_conditions = serializers.PrimaryKeyRelatedField(
-        queryset=TermCondition.objects.all(),
-        required=False,
-        allow_null=True
-    )
-    payment_terms = serializers.PrimaryKeyRelatedField(
-        queryset=PaymentTermOption.objects.all(),
-        required=False,
-        allow_null=True
-    )
-    delivery_options = serializers.PrimaryKeyRelatedField(
-        queryset=DeliveryOption.objects.all(),
-        required=False,
-        allow_null=True
-    )
-    other_options = serializers.PrimaryKeyRelatedField(
-        queryset=OtherOption.objects.all(),
-        required=False,
-        allow_null=True
-    )
-    
+    terms_conditions = serializers.PrimaryKeyRelatedField(queryset=TermsCondition.objects.all(), required=False, allow_null=True)
+    payment_terms = serializers.PrimaryKeyRelatedField(queryset=PaymentTerm.objects.all(), required=False, allow_null=True)
+    delivery_options = serializers.PrimaryKeyRelatedField(queryset=DeliveryOption.objects.all(), required=False, allow_null=True)
+    other_options = serializers.PrimaryKeyRelatedField(queryset=OtherOption.objects.all(), required=False, allow_null=True)
+
+    # Read-only fields shown after create/update
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    currency_display = serializers.CharField(source='get_currency_display', read_only=True)
+    total_amount = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    quote_number = serializers.CharField(read_only=True)
+    # Use correct UserSerializer for read-only display
+    created_by = UserSerializer(read_only=True)
+    last_modified_by = UserSerializer(read_only=True)
+
     class Meta:
         model = Quotation
         fields = [
-            'id', 'quote_number', 'status', 'customer', 'date', 'total_amount',
-            'purchase_request', 'expiry_date', 'currency', 'notes', 'price',
-            'validity', 'items', 'sales_agents', 'customer_contacts',
-            'additional_controls', 'attachments', 'terms_conditions',
-            'payment_terms', 'delivery_options', 'other_options'
+            # Writable fields
+            'status', 'customer', 'date', 'purchase_request', 'expiry_date',
+            'currency', 'notes', 'price', 'validity',
+            'terms_conditions', 'payment_terms', 'delivery_options', 'other_options',
+            'customer_contacts', # M2M write
+            'items', # Nested write
+            'sales_agents', # Nested write
+            'additional_controls', # Nested write
+            # Read-only fields
+            'id', 'quote_number', 'total_amount', 'status_display', 'currency_display',
+            'created_by', 'created_on', 'last_modified_by', 'last_modified_on',
         ]
-        read_only_fields = ['id', 'quote_number', 'total_amount', 'created_by', 'created_on', 'last_modified_by', 'last_modified_on']
-    
+        read_only_fields = [
+            'id', 'quote_number', 'total_amount', 'created_by', 'created_on',
+            'last_modified_by', 'last_modified_on',
+        ]
+
+    def _update_nested(self, quotation, nested_data, serializer_class, related_manager_name):
+        """Helper to update nested one-to-many relationships."""
+        manager = getattr(quotation, related_manager_name)
+        existing_items = {item.id: item for item in manager.all()}
+        validated_ids = set()
+        context = self.context # Pass context down
+
+        for item_data in nested_data:
+            item_id = item_data.get('id', None)
+            if item_id: # Update existing item
+                if item_id in existing_items:
+                    instance = existing_items[item_id]
+                    # Pass context when initializing serializer for update
+                    serializer = serializer_class(instance, data=item_data, partial=True, context=context)
+                    if serializer.is_valid(raise_exception=True):
+                        serializer.save()
+                    validated_ids.add(item_id)
+            else: # Create new item
+                # Pass context when initializing serializer for create
+                serializer = serializer_class(data=item_data, context=context)
+                if serializer.is_valid(raise_exception=True):
+                    serializer.save(quotation=quotation) # Link to parent
+
+        # Delete items not included in the update
+        for item_id, instance in existing_items.items():
+            if item_id not in validated_ids:
+                instance.delete()
+
+    def _update_total_amount(self, instance):
+        """Recalculates and saves the total amount for the quotation."""
+        # Ensure items are refreshed from DB before summing
+        instance.refresh_from_db(fields=['items'])
+        total = sum(item.total_selling for item in instance.items.all())
+        if instance.total_amount != total:
+            # Get user from context for last_modified_by
+            request = self.context.get('request')
+            user = request.user if request and request.user.is_authenticated else None
+            instance.total_amount = total
+            instance.last_modified_by = user # Update modifier when total changes
+            instance.save(update_fields=['total_amount', 'last_modified_on', 'last_modified_by'])
+
     @transaction.atomic
     def create(self, validated_data):
-        # Extract nested data
         items_data = validated_data.pop('items', [])
-        sales_agents_data = validated_data.pop('sales_agents', [])
-        customer_contacts_data = validated_data.pop('customer_contacts', [])
-        additional_controls_data = validated_data.pop('additional_controls', None)
-        attachments_data = validated_data.pop('attachments', [])
-        
-        # Create the quotation
+        agents_data = validated_data.pop('sales_agents', [])
+        controls_data = validated_data.pop('additional_controls', None)
+        contacts_data = validated_data.pop('customer_contacts', [])
+
+        request = self.context.get('request')
+        user = request.user if request and request.user.is_authenticated else None
+        validated_data['created_by'] = user
+        validated_data['last_modified_by'] = user
+
+        # Generate quote number (Example: Q-YYYYMMDD-XXXX) - Implement your logic
+        # This should ideally be more robust (e.g., using sequences or atomic counters)
+        from django.utils import timezone
+        import random
+        prefix = f"Q-{timezone.now().strftime('%Y%m%d')}"
+        last_quote = Quotation.objects.filter(quote_number__startswith=prefix).order_by('quote_number').last()
+        if last_quote:
+            last_num = int(last_quote.quote_number.split('-')[-1])
+            next_num = last_num + 1
+        else:
+            next_num = 1
+        validated_data['quote_number'] = f"{prefix}-{next_num:04d}"
+
+
         quotation = Quotation.objects.create(**validated_data)
-        
-        # Create related objects
-        self._create_items(quotation, items_data)
-        self._create_sales_agents(quotation, sales_agents_data)
-        
-        # Add customer contacts (using existing CustomerContact objects)
-        if customer_contacts_data:
-            quotation.customer_contacts.set(customer_contacts_data)
-        
-        if additional_controls_data:
-            self._create_additional_controls(quotation, additional_controls_data)
-        
-        self._create_attachments(quotation, attachments_data)
-        
-        # Calculate and update total amount
+
+        # Pass context when creating nested items
+        item_serializer = QuotationItemSerializer(data=items_data, many=True, context=self.context)
+        if item_serializer.is_valid(raise_exception=True):
+            item_serializer.save(quotation=quotation)
+
+        agent_serializer = QuotationSalesAgentSerializer(data=agents_data, many=True, context=self.context)
+        if agent_serializer.is_valid(raise_exception=True):
+            agent_serializer.save(quotation=quotation)
+
+        if controls_data:
+            # Pass context if needed by controls serializer
+            controls_serializer = QuotationAdditionalControlsSerializer(data=controls_data, context=self.context)
+            if controls_serializer.is_valid(raise_exception=True):
+                 controls_serializer.save(quotation=quotation)
+
+        if contacts_data:
+            quotation.customer_contacts.set(contacts_data)
+
         self._update_total_amount(quotation)
-        
+
         return quotation
-    
+
     @transaction.atomic
     def update(self, instance, validated_data):
-        # Extract nested data
         items_data = validated_data.pop('items', None)
-        sales_agents_data = validated_data.pop('sales_agents', None)
-        customer_contacts_data = validated_data.pop('customer_contacts', None)
-        additional_controls_data = validated_data.pop('additional_controls', None)
-        attachments_data = validated_data.pop('attachments', None)
-        
-        # Update the quotation fields
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        agents_data = validated_data.pop('sales_agents', None)
+        controls_data = validated_data.pop('additional_controls', None)
+        contacts_data = validated_data.pop('customer_contacts', None)
+
+        request = self.context.get('request')
+        user = request.user if request and request.user.is_authenticated else None
+        validated_data['last_modified_by'] = user
+
+        m2m_fields = ['customer_contacts']
+        regular_fields_data = {k: v for k, v in validated_data.items() if k not in m2m_fields}
+
+        for attr, value in regular_fields_data.items():
+             if attr not in ['items', 'sales_agents', 'additional_controls']:
+                 setattr(instance, attr, value)
         instance.save()
-        
-        # Update related objects if provided
+
         if items_data is not None:
-            self._update_items(instance, items_data)
-        
-        if sales_agents_data is not None:
-            self._update_sales_agents(instance, sales_agents_data)
-        
-        # Update customer contacts if provided
-        if customer_contacts_data is not None:
-            instance.customer_contacts.set(customer_contacts_data)
-        
-        if additional_controls_data is not None:
-            self._update_additional_controls(instance, additional_controls_data)
-        
-        if attachments_data is not None:
-            self._update_attachments(instance, attachments_data)
-        
-        # Calculate and update total amount
+            self._update_nested(instance, items_data, QuotationItemSerializer, 'items')
+
+        if agents_data is not None:
+            self._update_nested(instance, agents_data, QuotationSalesAgentSerializer, 'sales_agents')
+
+        if controls_data is not None:
+            controls_instance = getattr(instance, 'additional_controls', None)
+            if controls_instance:
+                # Pass context for update
+                serializer = QuotationAdditionalControlsSerializer(controls_instance, data=controls_data, partial=True, context=self.context)
+                if serializer.is_valid(raise_exception=True):
+                    serializer.save()
+            else:
+                 # Pass context for create
+                serializer = QuotationAdditionalControlsSerializer(data=controls_data, context=self.context)
+                if serializer.is_valid(raise_exception=True):
+                    serializer.save(quotation=instance)
+
+
+        if contacts_data is not None:
+            instance.customer_contacts.set(contacts_data)
+
         self._update_total_amount(instance)
-        
+
         return instance
-    
-    def _create_items(self, quotation, items_data):
-        for item_data in items_data:
-            QuotationItem.objects.create(quotation=quotation, **item_data)
-    
-    def _create_sales_agents(self, quotation, sales_agents_data):
-        for agent_data in sales_agents_data:
-            QuotationSalesAgent.objects.create(quotation=quotation, **agent_data)
-    
-    def _create_additional_controls(self, quotation, additional_controls_data):
-        if additional_controls_data:
-            QuotationAdditionalControl.objects.create(quotation=quotation, **additional_controls_data)
-    
-    def _create_attachments(self, quotation, attachments_data):
-        for attachment_data in attachments_data:
-            QuotationAttachment.objects.create(quotation=quotation, **attachment_data)
-    
-    def _update_items(self, quotation, items_data):
-        # Delete existing items
-        quotation.items.all().delete()
-        # Create new items
-        self._create_items(quotation, items_data)
-    
-    def _update_sales_agents(self, quotation, sales_agents_data):
-        # Delete existing sales agents
-        quotation.sales_agents.all().delete()
-        # Create new sales agents
-        self._create_sales_agents(quotation, sales_agents_data)
-    
-    def _update_additional_controls(self, quotation, additional_controls_data):
-        # Delete existing additional controls
-        quotation.additional_controls.all().delete()
-        # Create new additional controls if provided
-        if additional_controls_data:
-            self._create_additional_controls(quotation, additional_controls_data)
-    
-    def _update_attachments(self, quotation, attachments_data):
-        # Delete existing attachments
-        quotation.attachments.all().delete()
-        # Create new attachments
-        self._create_attachments(quotation, attachments_data)
-    
-    def _update_total_amount(self, quotation):
-        # Calculate total amount based on items
-        total = sum(item.total_selling for item in quotation.items.all())
-        quotation.total_amount = total
-        quotation.save(update_fields=['total_amount'])
+
+class CustomerSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Customer model.
+    """
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    parent_company_name = serializers.CharField(source='parent_company.name', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Customer
+        fields = [
+            'id', 'name', 'registered_name', 'tin', 'phone_number', 
+            'status', 'status_display', 'has_parent', 'parent_company', 
+            'parent_company_name', 'company_address', 'city', 'vat_type',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']

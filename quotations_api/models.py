@@ -15,348 +15,303 @@ from admin_api.models import (
     Inventory,
 )
 
-class TermCondition(models.Model):
+class TermsCondition(models.Model):
+    """Stores reusable Terms & Conditions options."""
     name = models.CharField(max_length=255, unique=True)
-    text = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # content = models.TextField(blank=True, null=True) # Optional: Add if full text is needed
 
     class Meta:
         ordering = ['name']
-        verbose_name = 'Term/Condition'
+        verbose_name = 'Terms & Condition'
         verbose_name_plural = 'Terms & Conditions'
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.name
 
-class PaymentTermOption(models.Model):
+class PaymentTerm(models.Model):
+    """Stores reusable Payment Term options."""
     name = models.CharField(max_length=255, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # content = models.TextField(blank=True, null=True) # Optional
 
     class Meta:
         ordering = ['name']
-        verbose_name = 'Payment Term Option'
-        verbose_name_plural = 'Payment Term Options'
+        verbose_name = 'Payment Term'
+        verbose_name_plural = 'Payment Terms'
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.name
 
 class DeliveryOption(models.Model):
+    """Stores reusable Delivery options."""
     name = models.CharField(max_length=255, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # content = models.TextField(blank=True, null=True) # Optional
 
     class Meta:
         ordering = ['name']
         verbose_name = 'Delivery Option'
         verbose_name_plural = 'Delivery Options'
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.name
 
 class OtherOption(models.Model):
+    """Stores other reusable options."""
     name = models.CharField(max_length=255, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # content = models.TextField(blank=True, null=True) # Optional
 
     class Meta:
         ordering = ['name']
         verbose_name = 'Other Option'
         verbose_name_plural = 'Other Options'
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.name
-    
+
 class Quotation(models.Model):
+    """Represents a sales quotation."""
     class Status(models.TextChoices):
-        DRAFT = 'draft', _('Draft')
-        FOR_APPROVAL = 'for_approval', _('For Approval')
-        APPROVED = 'approved', _('Approved')
-        EXPIRED = 'expired', _('Expired')
+        DRAFT = 'draft', 'Draft'
+        FOR_APPROVAL = 'for_approval', 'For Approval'
+        APPROVED = 'approved', 'Approved'
+        EXPIRED = 'expired', 'Expired'
 
     class Currency(models.TextChoices):
-        USD = 'USD', _('US Dollar')
-        EUR = 'EUR', _('Euro')
-        RMB = 'RMB', _('Chinese Yuan')
-        PHP = 'PHP', _('Philippine Peso')
+        USD = 'usd', 'USD'
+        EURO = 'euro', 'EURO'
+        RMB = 'rmb', 'RMB'
+        PHP = 'php', 'PHP'
 
     quote_number = models.CharField(max_length=50, unique=True, editable=False)
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.DRAFT,
-    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     customer = models.ForeignKey(
         Customer,
-        on_delete=models.PROTECT,
-        related_name='quotations',
+        on_delete=models.PROTECT, # Prevent deleting customer if they have quotes
+        related_name='quotations'
     )
-    date = models.DateField(auto_now_add=True) # Or default=date.today? Let's use auto_now_add for creation date
-    total_amount = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=Decimal('0.00'),
-    )
+    date = models.DateField()
+    total_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False) # Calculated field
+
+    # Tracking
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
         related_name='created_quotations',
-        editable=False,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        editable=False
     )
-    created_on = models.DateTimeField(auto_now_add=True, editable=False)
+    created_on = models.DateTimeField(auto_now_add=True)
     last_modified_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
         related_name='modified_quotations',
-        editable=False,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        editable=False
     )
-    last_modified_on = models.DateTimeField(auto_now=True, editable=False)
-    purchase_request = models.TextField(blank=True)
-    expiry_date = models.DateField(null=True, blank=True)
-    currency = models.CharField(
-        max_length=3,
-        choices=Currency.choices,
-        default=Currency.PHP,
+    last_modified_on = models.DateTimeField(auto_now=True)
+
+    # Optional Fields
+    purchase_request = models.TextField(blank=True, null=True)
+    expiry_date = models.DateField(blank=True, null=True)
+    currency = models.CharField(max_length=5, choices=Currency.choices, default=Currency.USD)
+    notes = models.TextField(blank=True, null=True)
+    price = models.TextField(blank=True, null=True) # Consider DecimalField if it's always numeric
+    validity = models.TextField(blank=True, null=True) # Consider IntegerField if it's always days
+
+    # Linked Options
+    terms_conditions = models.ForeignKey(
+        TermsCondition,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='quotations'
     )
-    notes = models.TextField(blank=True)
-    # attach_files = models.FileField(upload_to='quotation_files/', blank=True, null=True) # For single file
-    # For multiple files, a separate model is better:
-    # terms_conditions = models.ForeignKey(TermCondition, on_delete=models.SET_NULL, null=True, blank=True) # If single selection
-    terms_conditions = models.ManyToManyField(TermCondition, blank=True, related_name='quotations') # If multiple selections
-    price_validity = models.CharField(max_length=255, blank=True) # Renamed 'Price' to 'price_validity' for clarity
-    # payment = models.ForeignKey(PaymentTermOption, on_delete=models.SET_NULL, null=True, blank=True) # If single selection
-    payment_terms = models.ManyToManyField(PaymentTermOption, blank=True, related_name='quotations') # If multiple selections
-    # delivery = models.ForeignKey(DeliveryOption, on_delete=models.SET_NULL, null=True, blank=True) # If single selection
-    delivery_options = models.ManyToManyField(DeliveryOption, blank=True, related_name='quotations') # If multiple selections
-    validity_period = models.CharField(max_length=255, blank=True) # Renamed 'Validity' to 'validity_period'
-    # others = models.ForeignKey(OtherOption, on_delete=models.SET_NULL, null=True, blank=True) # If single selection
-    other_options = models.ManyToManyField(OtherOption, blank=True, related_name='quotations') # If multiple selections
+    payment_terms = models.ForeignKey(
+        PaymentTerm,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='quotations'
+    )
+    delivery_options = models.ForeignKey(
+        DeliveryOption,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='quotations'
+    )
+    other_options = models.ForeignKey(
+        OtherOption,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='quotations'
+    )
 
-    # Related managers for easy access
-    # items defined via QuotationItem.quotation ForeignKey related_name='items'
-    # sales_agents defined via QuotationSalesAgent.quotation ForeignKey related_name='sales_agents'
-    # customer_contacts defined via ManyToManyField below
-    # additional_controls defined via QuotationAdditionalControl.quotation OneToOneField related_name='additional_controls'
-    # attachments defined via QuotationAttachment.quotation ForeignKey related_name='attachments'
-
+    # Linked Contacts (Using existing admin_api model)
     customer_contacts = models.ManyToManyField(
         CustomerContact,
-        blank=True,
         related_name='quotations',
+        blank=True
     )
 
     class Meta:
-        ordering = ['-created_on', '-id']
+        ordering = ['-created_on']
         verbose_name = 'Quotation'
         verbose_name_plural = 'Quotations'
 
-    def __str__(self) -> str:
-        return f"Quote {self.quote_number} for {self.customer.name}"
-
-    def _generate_quote_number(self) -> str:
-        # Simple example: QUOTE-YYYYMMDD-ID
-        # You might want a more robust sequential number generator
-        return f"QUOTE-{self.created_on.strftime('%Y%m%d')}-{self.pk}"
-
-    def update_total_amount(self) -> None:
-        """Calculates and updates the total amount from related items."""
-        total = self.items.aggregate(
-            total=Sum(F('net_selling') * F('quantity'))
-        )['total'] or Decimal('0.00')
-        self.total_amount = total
-        # Note: Saving here might cause recursion if called within save().
-        # It's often better to calculate in save() or use signals.
+    def __str__(self):
+        return f"Quotation #{self.quote_number} - {self.customer.name}"
 
     def save(self, *args, **kwargs):
-        is_new = self._state.adding
-        if is_new and not self.created_on:
-            # Ensure created_on is set before generating quote number if using date
-            super().save(*args, **kwargs) # Save once to get pk and created_on
-            self.quote_number = self._generate_quote_number()
-            kwargs['force_insert'] = False # Avoid re-inserting
-            super().save(update_fields=['quote_number'], *args, **kwargs) # Save again with quote_number
-        else:
-            # Calculate total amount before saving updates
-            # self.update_total_amount() # Be cautious with calling aggregate here
-            super().save(*args, **kwargs)
-        # Consider using signals (post_save on QuotationItem) to update total_amount reliably
+        # Auto-generate quote number on first save
+        if not self.pk: # Only generate if creating a new instance
+             # Find the highest existing quote number (assuming format Q-######)
+            last_quotation = Quotation.objects.order_by('id').last()
+            if last_quotation:
+                last_id = last_quotation.id
+                new_id = last_id + 1
+            else:
+                new_id = 1
+            self.quote_number = f"Q-{new_id:06d}" # Format as Q-000001
 
+        # Recalculate total amount (consider doing this in serializer or signal for complex cases)
+        # self.total_amount = sum(item.total_selling for item in self.items.all()) # Requires items to be saved first
 
-class QuotationAttachment(models.Model):
-    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='attachments')
-    file = models.FileField(upload_to='quotation_attachments/')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self) -> str:
-        return f"Attachment for {self.quotation.quote_number} - {self.file.name}"
-
+        super().save(*args, **kwargs)
 
 class QuotationItem(models.Model):
-    class DiscountType(models.TextChoices):
-        VALUE = 'value', _('Value')
-        PERCENTAGE = 'percentage', _('Percentage')
-
+    """Represents an item line within a quotation."""
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='items')
-    inventory = models.ForeignKey(Inventory, on_delete=models.PROTECT, related_name='quotation_items')
-    # Fields copied/defaulted from Inventory (can be overridden)
-    item_code = models.CharField(max_length=50, editable=False) # Copied from inventory
-    brand_name = models.CharField(max_length=100, editable=False) # Copied from inventory.brand
-    show_brand = models.BooleanField(default=True)
-    made_in = models.TextField(blank=True, null=True, editable=False) # Copied from inventory.brand
-    show_made_in = models.BooleanField(default=True) # Copied from inventory.brand
-    wholesale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True) # Copied, can override
-    unit = models.CharField(max_length=50, blank=True) # Copied from inventory
-    photo = models.ImageField(upload_to='quotation_item_photos/', null=True, blank=True) # Copied, can override
-    show_photo = models.BooleanField(default=True)
-    external_description = models.TextField(blank=True) # Copied from inventory
+    inventory = models.ForeignKey(Inventory, on_delete=models.PROTECT, related_name='quotation_items') # Link to inventory item
 
-    # Quotation specific fields
-    actual_landed_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    estimated_landed_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    notes = models.TextField(blank=True)
-    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
-    baseline_margin = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True) # Percentage?
-    # inventory_status calculated via property
-    # last_quoted_price needs lookup logic (maybe via LastQuotedPrice model)
+    # Overridable fields from Inventory (or specific to this quote line)
+    item_code = models.CharField(max_length=100, blank=True) # Store for reference, populated from inventory
+    brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, blank=True) # Store for reference
+    show_brand = models.BooleanField(default=True)
+    # made_in = models.CharField(max_length=100, blank=True, null=True) # Populated based on Brand logic
+    wholesale_price = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True) # Override
+    actual_landed_cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    estimated_landed_cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    unit = models.CharField(max_length=50, blank=True) # Override
+    quantity = models.PositiveIntegerField(default=1)
+    photo = models.ImageField(upload_to='quotation_item_photos/', null=True, blank=True) # Override
+    show_photo = models.BooleanField(default=True)
+    baseline_margin = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True) # Percentage
+    external_description = models.TextField(blank=True, null=True) # Override
+
+    # Discount fields
     has_discount = models.BooleanField(default=False)
-    discount_type = models.CharField(
-        max_length=10,
-        choices=DiscountType.choices,
-        null=True,
-        blank=True,
-    )
+    discount_type = models.CharField(max_length=10, choices=[('value', 'Value'), ('percentage', 'Percentage')], null=True, blank=True)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    discount_value = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    # net_selling calculated via property
-    # total_selling calculated via property
+    discount_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+
+    # Calculated fields (Store if needed for performance, otherwise use properties/serializers)
+    net_selling = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    total_selling = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # Fields to be populated by logic (not directly stored or managed via properties/serializers)
+    # inventory_status: str
+    # last_quoted_price: Decimal
+    # landed_cost_x_discount: Decimal
 
     class Meta:
-        ordering = ['id'] # Order by addition sequence within a quote
-        unique_together = [['quotation', 'inventory']] # Prevent adding same item twice? Or allow? Allowing for now.
+        ordering = ['id'] # Keep items in the order they were added
+        verbose_name = 'Quotation Item'
+        verbose_name_plural = 'Quotation Items'
 
-    def __str__(self) -> str:
-        return f"{self.item_code} for Quote {self.quotation.quote_number}"
-
-    @property
-    def inventory_stock(self) -> Decimal:
-        # Helper to get current stock, handling potential None
-        return self.inventory.stock_on_hand or Decimal('0.00')
-
-    @property
-    def inventory_status(self) -> str:
-        stock = self.inventory_stock
-        qty = self.quantity
-
-        if qty > 1:
-            if stock == 0:
-                return "For Importation"
-            elif stock > 0 and qty > stock:
-                return f"{stock:.0f} pcs In Stock, Balance for Importation" # Assuming pcs means integer units
-            elif stock > 0 and qty <= stock:
-                return "In Stock"
-        elif qty == 1:
-            if stock == 0:
-                return "For Importation"
-            elif stock > 0:
-                return f"{stock:.0f} pcs in stock"
-        return "Status Unknown" # Fallback
-
-    @property
-    def landed_cost_x_discount(self) -> Decimal | None:
-        # Placeholder - Define calculation logic based on requirements
-        # Needs clarification on which cost (actual/estimated) and how discount applies
-        cost = self.actual_landed_cost or self.estimated_landed_cost
-        if cost is None:
-            return None
-        # Simple example: apply discount value if present
-        if self.has_discount and self.discount_type == self.DiscountType.VALUE and self.discount_value is not None:
-             return cost - self.discount_value # Or is it discount *on* cost? Needs clarification
-        # Add logic for percentage discount if needed
-        return cost # No discount applied in this example
-
-    @property
-    def net_selling(self) -> Decimal:
-        # Placeholder - Define calculation logic based on requirements
-        # Example: Wholesale price minus discount
-        price = self.wholesale_price or Decimal('0.00')
-        discount_amount = Decimal('0.00')
-
-        if self.has_discount:
-            if self.discount_type == self.DiscountType.VALUE and self.discount_value is not None:
-                discount_amount = self.discount_value
-            elif self.discount_type == self.DiscountType.PERCENTAGE and self.discount_percentage is not None:
-                discount_amount = price * (self.discount_percentage / Decimal('100.00'))
-
-        return price - discount_amount
-
-    @property
-    def total_selling(self) -> Decimal:
-        return self.net_selling * self.quantity
+    def __str__(self):
+        return f"{self.quantity} x {self.item_code or self.inventory.item_code} for Quotation {self.quotation.quote_number}"
 
     def save(self, *args, **kwargs):
-        if self._state.adding or not self.item_code:
-            # Populate fields from inventory on creation
+        # Populate fields from inventory if not provided (on creation)
+        if not self.pk and self.inventory:
             self.item_code = self.inventory.item_code
-            self.brand_name = self.inventory.brand.name
-            self.made_in = self.inventory.brand.made_in
-            self.show_made_in = self.inventory.brand.show_made_in
-            if self.wholesale_price is None: # Only default if not provided
+            self.brand = self.inventory.brand
+            if self.wholesale_price is None: # Only default if not overridden
                  self.wholesale_price = self.inventory.wholesale_price
-            self.unit = self.inventory.unit
-            if not self.photo: # Only default if not provided
-                 self.photo = self.inventory.photo
-            self.external_description = self.inventory.external_description
-        super().save(*args, **kwargs)
-        # Consider using signals to update Quotation.total_amount
+            if not self.unit:
+                 self.unit = self.inventory.unit
+            # if not self.photo: # Careful with ImageField default
+            #     self.photo = self.inventory.photo
+            if self.external_description is None:
+                 self.external_description = self.inventory.external_description
 
+        # --- Calculation Logic ---
+        # Basic Net Selling (before discount)
+        base_price = self.wholesale_price if self.wholesale_price is not None else 0
+
+        # Apply Discount
+        if self.has_discount and self.discount_type:
+            if self.discount_type == 'percentage' and self.discount_percentage is not None:
+                discount_amount = base_price * (self.discount_percentage / 100)
+                self.net_selling = base_price - discount_amount
+            elif self.discount_type == 'value' and self.discount_value is not None:
+                self.net_selling = base_price - self.discount_value
+            else:
+                self.net_selling = base_price # No valid discount applied
+        else:
+            self.net_selling = base_price
+
+        # Total Selling
+        self.total_selling = self.net_selling * self.quantity
+
+        super().save(*args, **kwargs)
+        # Note: Need to trigger Quotation total recalculation after saving/deleting items (e.g., via signals)
 
 class QuotationSalesAgent(models.Model):
+    """Links Sales Agents (Users) to a Quotation with a specific role."""
     class Role(models.TextChoices):
-        MAIN = 'main', _('Main')
-        SUPPORT = 'support', _('Support')
+        MAIN = 'main', 'Main'
+        SUPPORT = 'support', 'Support'
 
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='sales_agents')
-    # Assuming sales agent is a User or a dedicated SalesAgent model
-    # Using User for now:
-    agent = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='quotation_assignments')
+    agent = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='quotation_assignments')
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.SUPPORT)
 
     class Meta:
-        ordering = ['role', 'agent__username'] # Main agent first
-        unique_together = [['quotation', 'agent']] # One role per agent per quote
+        ordering = ['role', 'agent__username']
+        unique_together = ('quotation', 'agent') # An agent can only be assigned once per quote
+        verbose_name = 'Quotation Sales Agent'
+        verbose_name_plural = 'Quotation Sales Agents'
 
-    def __str__(self) -> str:
-        return f"{self.agent.get_full_name() or self.agent.username} ({self.get_role_display()}) for Quote {self.quotation.quote_number}"
+    def __str__(self):
+        return f"{self.agent.get_full_name() or self.agent.username} ({self.get_role_display()}) for Quotation {self.quotation.quote_number}"
 
-    def clean(self):
-        # Ensure only one main agent per quotation
-        if self.role == self.Role.MAIN:
-            main_agents = QuotationSalesAgent.objects.filter(
-                quotation=self.quotation,
-                role=self.Role.MAIN
-            ).exclude(pk=self.pk) # Exclude self if updating
-            if main_agents.exists():
-                raise ValidationError(_('A quotation can only have one main sales agent.'))
-        super().clean()
-
-    def save(self, *args, **kwargs):
-        self.full_clean() # Run validation before saving
-        super().save(*args, **kwargs)
-
-
-class QuotationAdditionalControl(models.Model):
+class QuotationAdditionalControls(models.Model):
+    """Stores boolean control flags for a Quotation."""
     quotation = models.OneToOneField(Quotation, on_delete=models.CASCADE, related_name='additional_controls')
-    show_carton_packing = models.BooleanField(default=False)
+    show_carton_packing = models.BooleanField(default=True)
     do_not_show_all_photos = models.BooleanField(default=False)
     highlight_item_notes = models.BooleanField(default=False)
     show_devaluation_clause = models.BooleanField(default=True)
 
-    def __str__(self) -> str:
-        return f"Additional Controls for Quote {self.quotation.quote_number}"
+    class Meta:
+        verbose_name = 'Quotation Additional Controls'
+        verbose_name_plural = 'Quotation Additional Controls'
 
+    def __str__(self):
+        return f"Additional Controls for Quotation {self.quotation.quote_number}"
+
+def quotation_attachment_path(instance, filename):
+    # file will be uploaded to MEDIA_ROOT/quotation_attachments/<quotation_id>/<filename>
+    return f'quotation_attachments/{instance.quotation.id}/{filename}'
+
+class QuotationAttachment(models.Model):
+    """Stores files attached to a Quotation."""
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='attachments')
+    file = models.FileField(upload_to=quotation_attachment_path)
+    uploaded_on = models.DateTimeField(auto_now_add=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='uploaded_quotation_attachments'
+    )
+
+    class Meta:
+        ordering = ['-uploaded_on']
+        verbose_name = 'Quotation Attachment'
+        verbose_name_plural = 'Quotation Attachments'
+
+    def __str__(self):
+        return f"Attachment for Quotation {self.quotation.quote_number} ({self.file.name})"
 
 class LastQuotedPrice(models.Model):
     inventory = models.ForeignKey(Inventory, on_delete=models.CASCADE, related_name='last_quoted_prices')
