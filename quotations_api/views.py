@@ -1,319 +1,209 @@
-from django.db.models import Q # Import Q object for complex lookups if needed
-from rest_framework import viewsets, permissions, status, filters
+from datetime import datetime
+import json
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from rest_framework import status
+from rest_framework.views import APIView
 from rest_framework.response import Response
-# Removed DjangoFilterBackend import
-# from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.generics import get_object_or_404 # Import get_object_or_404
-
-from .models import (
-    Quotation, TermsCondition, PaymentTerm, DeliveryOption, OtherOption,
-)
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
+from .models import Quotation
 from admin_api.models import Customer
 from .serializers import (
-    QuotationListSerializer, QuotationDetailSerializer, QuotationCreateUpdateSerializer,
-    TermsConditionSerializer, PaymentTermSerializer, DeliveryOptionSerializer,
-    OtherOptionSerializer,
+    QuotationSerializer, QuotationCreateUpdateSerializer, CustomerListSerializer
 )
-from admin_api.serializers import CustomerSerializer
 
-# --- Reusable Option ViewSets ---
+class QuotationView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
 
-class TermsConditionViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows Terms & Conditions to be viewed or edited.
-    Uses default pagination settings.
-    Manual filtering for 'name'. Search and Ordering handled by DRF filters.
-    """
-    queryset = TermsCondition.objects.all()
-    serializer_class = TermsConditionSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    # Removed DjangoFilterBackend
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    # filterset_fields = ['name'] # Removed
-    search_fields = ['name', 'text'] # Keep search fields
-    ordering_fields = ['name', 'id']
-    ordering = ['name']
+    def get(self, request, pk=None):
+        # If pk is provided, return a single quotation with all related data
+        if pk:
+            quotation = get_object_or_404(Quotation, pk=pk)
+            serializer = QuotationSerializer(quotation)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        # Get search parameters for specific fields
+        quote_number_search = request.query_params.get('quote_number', '')
+        status = request.query_params.get('status', '')
+        customer = request.query_params.get('customer', '')
+        date_from = request.query_params.get('date_from', '')
+        date_to = request.query_params.get('date_to', '')
+        
+        # Get general search parameter
+        general_search = request.query_params.get('search', '')
+        
+        # Get sorting parameters
+        sort_by = request.query_params.get('sort_by', '-date')
+        sort_direction = request.query_params.get('sort_direction', 'asc')
+        
+        # Query quotations
+        quotations = Quotation.objects.all()
 
-    def get_queryset(self):
-        """
-        Override to apply manual filtering based on query parameters.
-        """
-        queryset = super().get_queryset()
-        name_param = self.request.query_params.get('name', None)
+        # Apply field-specific search filters
+        if quote_number_search:
+            quotations = quotations.filter(quote_number__icontains=quote_number_search)
+        
+        if status and status in dict(Quotation.STATUS_CHOICES):
+            quotations = quotations.filter(status=status)
+            
+        if customer:
+            quotations = quotations.filter(customer__name__icontains=customer)
+            
+        if date_from:
+            try:
+                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                quotations = quotations.filter(date__gte=date_from_obj)
+            except ValueError:
+                pass
+                
+        if date_to:
+            try:
+                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                quotations = quotations.filter(date__lte=date_to_obj)
+            except ValueError:
+                pass
 
-        if name_param:
-            # Use icontains for case-insensitive partial match, like search
-            # Or use exact/iexact if needed
-            queryset = queryset.filter(name__icontains=name_param)
+        # Apply general search filter if no specific filters are provided
+        if general_search and not any([quote_number_search, status, customer, date_from, date_to]):
+            quotations = quotations.filter(
+                Q(quote_number__icontains=general_search) |
+                Q(customer__name__icontains=general_search) |
+                Q(sales_agents__agent_name__icontains=general_search)
+            ).distinct()
 
-        return queryset
+        # Apply sorting
+        sort_prefix = '-' if sort_direction == 'desc' else ''
+        sort_field = sort_by.lstrip('-')
+        sort_order = f"{sort_prefix}{sort_field}"
+        quotations = quotations.order_by(sort_order)
+        
+        # Pagination
+        page = self.paginate_queryset(quotations, request)
+        if page is not None:
+            serializer = QuotationSerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    },
+                    'currency_options': ['USD', 'EURO', 'RMB', 'PHP'],
+                    'status_options': ['draft', 'for_approval', 'approved', 'expired'],
+                }
+            })
 
-class PaymentTermViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows Payment Terms to be viewed or edited.
-    Uses default pagination settings.
-    Manual filtering for 'name'. Search and Ordering handled by DRF filters.
-    """
-    queryset = PaymentTerm.objects.all()
-    serializer_class = PaymentTermSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    # Removed DjangoFilterBackend
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    # filterset_fields = ['name'] # Removed
-    search_fields = ['name'] # Keep search fields
-    ordering_fields = ['name', 'id']
-    ordering = ['name']
+        # Fallback if pagination fails
+        serializer = QuotationSerializer(quotations, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'meta': {
+                'currency_options': ['USD', 'EURO', 'RMB', 'PHP'],
+                'status_options': ['draft', 'for_approval', 'approved', 'expired'],
+            }
+        })
 
-    def get_queryset(self):
-        """
-        Override to apply manual filtering based on query parameters.
-        """
-        queryset = super().get_queryset()
-        name_param = self.request.query_params.get('name', None)
-
-        if name_param:
-            queryset = queryset.filter(name__icontains=name_param)
-
-        return queryset
-
-class DeliveryOptionViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows Delivery Options to be viewed or edited.
-    Uses default pagination settings.
-    Manual filtering for 'name'. Search and Ordering handled by DRF filters.
-    """
-    queryset = DeliveryOption.objects.all()
-    serializer_class = DeliveryOptionSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    # Removed DjangoFilterBackend
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    # filterset_fields = ['name'] # Removed
-    search_fields = ['name'] # Keep search fields
-    ordering_fields = ['name', 'id']
-    ordering = ['name']
-
-    def get_queryset(self):
-        """
-        Override to apply manual filtering based on query parameters.
-        """
-        queryset = super().get_queryset()
-        name_param = self.request.query_params.get('name', None)
-
-        if name_param:
-            queryset = queryset.filter(name__icontains=name_param)
-
-        return queryset
-
-class OtherOptionViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows Other Options to be viewed or edited.
-    Uses default pagination settings.
-    Manual filtering for 'name'. Search and Ordering handled by DRF filters.
-    """
-    queryset = OtherOption.objects.all()
-    serializer_class = OtherOptionSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    # Removed DjangoFilterBackend
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    # filterset_fields = ['name'] # Removed
-    search_fields = ['name'] # Keep search fields
-    ordering_fields = ['name', 'id']
-    ordering = ['name']
-
-    def get_queryset(self):
-        """
-        Override to apply manual filtering based on query parameters.
-        """
-        queryset = super().get_queryset()
-        name_param = self.request.query_params.get('name', None)
-
-        if name_param:
-            queryset = queryset.filter(name__icontains=name_param)
-
-        return queryset
-
-
-# --- Main Quotation ViewSet ---
-
-class QuotationViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint that allows Quotations to be viewed, created, edited, or deleted.
-
-    Handles nested creation/update of items, sales agents, and additional controls.
-    Uses default pagination settings.
-    Manual filtering implemented in get_queryset.
-    Search and Ordering handled by DRF filters.
-    """
-    # Base queryset remains the same
-    queryset = Quotation.objects.select_related(
-        'customer', 'created_by', 'last_modified_by',
-        'terms_conditions', 'payment_terms', 'delivery_options', 'other_options',
-        'additional_controls'
-    ).prefetch_related(
-        'items', 'items__inventory', #'items__brand', # Brand is on inventory now
-        'sales_agents', 'sales_agents__agent',
-        'customer_contacts',
-        'attachments'
-    ).order_by('-created_on') # Default ordering can be applied here or via OrderingFilter
-    permission_classes = [permissions.IsAuthenticated]
-    # Removed DjangoFilterBackend
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-
-    # filterset_fields removed
-
-    # Search and ordering fields remain the same
-    search_fields = [
-        'quote_number',
-        'customer__name',
-        'customer__registered_name', # Added registered name
-        'purchase_request',
-        'notes',
-        'items__inventory__item_code', # Adjusted for nested inventory
-        'items__inventory__product_name', # Adjusted for nested inventory
-        'items__external_description',
-        'sales_agents__agent__username', # Search by agent username
-        'sales_agents__agent__first_name',
-        'sales_agents__agent__last_name',
-    ]
-
-    ordering_fields = [
-        'quote_number', 'status', 'customer__name', 'date', 'total_amount',
-        'created_on', 'last_modified_on', 'expiry_date'
-    ]
-    # Default ordering can be set here or overridden by query param 'ordering'
-    ordering = ['-created_on']
-
-    def get_queryset(self):
-        """
-        Override to apply manual filtering based on query parameters.
-        Search and Ordering are handled by the filter_backends.
-        """
-        queryset = super().get_queryset() # Start with the base queryset
-
-        # --- Apply filters based on query parameters ---
-        status = self.request.query_params.get('status', None)
-        customer_id = self.request.query_params.get('customer', None)
-        created_by_id = self.request.query_params.get('created_by', None)
-        agent_id = self.request.query_params.get('sales_agents__agent', None) # Match potential param name
-
-        date_exact = self.request.query_params.get('date', None)
-        date_gte = self.request.query_params.get('date__gte', None)
-        date_lte = self.request.query_params.get('date__lte', None)
-
-        expiry_date_exact = self.request.query_params.get('expiry_date', None)
-        expiry_date_gte = self.request.query_params.get('expiry_date__gte', None)
-        expiry_date_lte = self.request.query_params.get('expiry_date__lte', None)
-
-        created_on_date_exact = self.request.query_params.get('created_on__date', None)
-        created_on_date_gte = self.request.query_params.get('created_on__date__gte', None)
-        created_on_date_lte = self.request.query_params.get('created_on__date__lte', None)
-
-        # Apply filters sequentially
-        if status:
-            # Handle potential multiple statuses (e.g., status=draft,approved)
-            status_list = [s.strip() for s in status.split(',') if s.strip()]
-            if status_list:
-                queryset = queryset.filter(status__in=status_list)
-        if customer_id:
-            queryset = queryset.filter(customer_id=customer_id) # Filter by FK ID
-        if created_by_id:
-            queryset = queryset.filter(created_by_id=created_by_id)
-        if agent_id:
-            # Ensure distinct results if filtering across a M2M relationship
-            queryset = queryset.filter(sales_agents__agent_id=agent_id).distinct()
-
-        # Date filtering (add try-except for validation if needed)
-        if date_exact:
-            queryset = queryset.filter(date=date_exact)
-        if date_gte:
-            queryset = queryset.filter(date__gte=date_gte)
-        if date_lte:
-            queryset = queryset.filter(date__lte=date_lte)
-
-        # Expiry Date filtering
-        if expiry_date_exact:
-            queryset = queryset.filter(expiry_date=expiry_date_exact)
-        if expiry_date_gte:
-            queryset = queryset.filter(expiry_date__gte=expiry_date_gte)
-        if expiry_date_lte:
-            queryset = queryset.filter(expiry_date__lte=expiry_date_lte)
-
-        # Created On filtering (filtering on the date part)
-        if created_on_date_exact:
-            queryset = queryset.filter(created_on__date=created_on_date_exact)
-        if created_on_date_gte:
-            queryset = queryset.filter(created_on__date__gte=created_on_date_gte)
-        if created_on_date_lte:
-            queryset = queryset.filter(created_on__date__lte=created_on_date_lte)
-
-        # Note: General 'search' and 'ordering' are handled by SearchFilter and OrderingFilter
-
-        return queryset
-
-    def get_serializer_class(self):
-        """
-        Return different serializers for list/detail vs create/update actions.
-        """
-        if self.action == 'list':
-            return QuotationListSerializer
-        elif self.action in ['retrieve']:
-            return QuotationDetailSerializer
-        elif self.action in ['create', 'update', 'partial_update']:
-            return QuotationCreateUpdateSerializer
-        return QuotationDetailSerializer # Default fallback
-
-    def get_serializer_context(self):
-        """
-        Pass request context to the serializer.
-        """
-        context = super().get_serializer_context()
-        context['request'] = self.request
-        return context
-
-    # Removed the incorrect 'get' method that was pasted here.
-    # The default list/retrieve actions from ModelViewSet will use the
-    # queryset returned by the overridden get_queryset method.
-
-    # perform_create/perform_update handled by serializer context
-
-    # Example custom action (commented out)
-    # @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
-    # def approve(self, request, pk=None):
-    #     # ... implementation ...
-    #     pass
-
-# Add CustomerViewSet
-class CustomerViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    API endpoint that allows Customers to be viewed.
-    """
-    queryset = Customer.objects.filter(status='active')  # Only active customers by default
-    serializer_class = CustomerSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def list(self, request, *args, **kwargs):
-        print("CustomerViewSet.list called")
+    def post(self, request):
         try:
-            # Get the queryset and apply any filters
-            queryset = self.filter_queryset(self.get_queryset())
-            
-            # Print the count of customers
-            print(f"Found {queryset.count()} customers")
-            
-            # Paginate the results
-            page = self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = self.get_serializer(page, many=True)
-                print(f"Returning {len(serializer.data)} customers after pagination")
-                return self.get_paginated_response(serializer.data)
-
-            # If pagination is not required
-            serializer = self.get_serializer(queryset, many=True)
-            print(f"Returning all {len(serializer.data)} customers")
-            return Response(serializer.data)
+            # Extract the JSON data from the 'data' field
+            if 'data' in request.data:
+                json_data = json.loads(request.data['data'])
+                
+                # Process attachments if any
+                if 'attachments' in json_data and json_data['attachments']:
+                    attachments_data = []
+                    for i, attachment in enumerate(json_data['attachments']):
+                        file_key = f'attachments[{i}][file]'
+                        if file_key in request.data:
+                            attachment_data = {
+                                'file': request.data[file_key],
+                                'filename': attachment.get('filename', '')
+                            }
+                            attachments_data.append(attachment_data)
+                    
+                    # Replace the attachments in json_data with the processed ones
+                    json_data['attachments'] = attachments_data
+                
+                serializer = QuotationCreateUpdateSerializer(data=json_data, context={'request': request})
+                
+                if serializer.is_valid():
+                    serializer.save()
+                    return Response({
+                        'success': True,
+                        'data': serializer.data
+                    }, status=status.HTTP_201_CREATED)
+                else:
+                    # Format validation errors
+                    error_messages = {}
+                    for field, errors in serializer.errors.items():
+                        error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                    return Response({
+                        'success': False,
+                        'errors': error_messages
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    'success': False,
+                    'errors': {'detail': 'No data provided'}
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
         except Exception as e:
-            print(f"Error in CustomerViewSet.list: {str(e)}")
-            return Response(
-                {"detail": "An error occurred while fetching customers."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def put(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+        serializer = QuotationCreateUpdateSerializer(quotation, data=request.data, partial=True, context={'request': request})
+        try:
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            else:
+                # Format validation errors
+                error_messages = {}
+                for field, errors in serializer.errors.items():
+                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
+                return Response({
+                    'success': False,
+                    'errors': error_messages
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+        quotation.delete()
+        return Response({
+            'success': True,
+            'data': None
+        }, status=status.HTTP_200_OK)
+
+class CustomerListView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Get only active customers
+        customers = Customer.objects.filter(status='active')
+        serializer = CustomerListSerializer(customers, many=True)
+        
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
