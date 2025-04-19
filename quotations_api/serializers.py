@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (
-    Quotation, QuotationAttachment, QuotationSalesAgent, QuotationAdditionalControls
+    Quotation, QuotationAttachment, QuotationSalesAgent, QuotationAdditionalControls,
+    Payment, Delivery, Other, QuotationTermsAndConditions
 )
 from admin_api.models import Customer
 import json
@@ -26,20 +27,55 @@ class QuotationAdditionalControlsSerializer(serializers.ModelSerializer):
         model = QuotationAdditionalControls
         fields = ['show_carton_packing', 'do_not_show_all_photos', 'highlight_item_notes', 'show_devaluation_clause']
 
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = ['id', 'text', 'created_on']
+
+class DeliverySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Delivery
+        fields = ['id', 'text', 'created_on']
+
+class OtherSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Other
+        fields = ['id', 'text', 'created_on']
+
+class QuotationTermsAndConditionsSerializer(serializers.ModelSerializer):
+    payment_text = serializers.SerializerMethodField()
+    delivery_text = serializers.SerializerMethodField()
+    other_text = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = QuotationTermsAndConditions
+        fields = ['price', 'payment', 'payment_text', 'delivery', 'delivery_text', 'validity', 'other', 'other_text']
+    
+    def get_payment_text(self, obj):
+        return obj.payment.text if obj.payment else None
+    
+    def get_delivery_text(self, obj):
+        return obj.delivery.text if obj.delivery else None
+    
+    def get_other_text(self, obj):
+        return obj.other.text if obj.other else None
+
 class QuotationSerializer(serializers.ModelSerializer):
     attachments = QuotationAttachmentSerializer(many=True, read_only=True)
     sales_agents = QuotationSalesAgentSerializer(many=True, read_only=True)
     customer_name = serializers.StringRelatedField(source='customer', read_only=True)
     main_agent = serializers.SerializerMethodField()
     additional_controls = QuotationAdditionalControlsSerializer(read_only=True)
+    terms_and_conditions = QuotationTermsAndConditionsSerializer(read_only=True)
     
     class Meta:
         model = Quotation
         fields = [
-            'id', 'quote_number', 'status', 'customer', 'customer_name', 'date',
-            'total_amount', 'created_by', 'created_on', 'last_modified_by',
-            'last_modified_on', 'purchase_request', 'expiry_date', 'currency',
-            'notes', 'attachments', 'sales_agents', 'main_agent', 'additional_controls'
+            'id', 'quote_number', 'status', 'customer', 'customer_name',
+            'date', 'expiry_date', 'total_amount', 'currency',
+            'purchase_request', 'notes', 'created_on', 'last_modified_on',
+            'attachments', 'sales_agents', 'main_agent', 'additional_controls',
+            'terms_and_conditions'
         ]
         read_only_fields = [
             'id', 'quote_number', 'created_on', 'last_modified_on',
@@ -49,7 +85,7 @@ class QuotationSerializer(serializers.ModelSerializer):
     def get_main_agent(self, obj):
         main_agent = obj.sales_agents.filter(role='main').first()
         if main_agent:
-            return main_agent.agent_name
+            return QuotationSalesAgentSerializer(main_agent).data
         return None
 
 class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
@@ -120,6 +156,16 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
             except (json.JSONDecodeError, KeyError):
                 pass
         
+        # Extract terms and conditions data from the request
+        terms_data = None
+        if request and 'data' in request.data:
+            try:
+                request_data = json.loads(request.data['data'])
+                if 'terms_and_conditions' in request_data:
+                    terms_data = request_data['terms_and_conditions']
+            except (json.JSONDecodeError, KeyError):
+                pass
+        
         # Update the quotation instance with validated data
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -157,6 +203,44 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
                 controls.save()
             except QuotationAdditionalControls.DoesNotExist:
                 QuotationAdditionalControls.objects.create(quotation=instance, **additional_controls_data)
+        
+        # Update terms and conditions if provided
+        if terms_data is not None:
+            try:
+                terms = instance.terms_and_conditions
+                
+                # Update simple fields
+                if 'price' in terms_data:
+                    terms.price = terms_data['price']
+                if 'validity' in terms_data:
+                    terms.validity = terms_data['validity']
+                
+                # Update related fields
+                if 'payment' in terms_data and terms_data['payment']:
+                    terms.payment_id = terms_data['payment']
+                if 'delivery' in terms_data and terms_data['delivery']:
+                    terms.delivery_id = terms_data['delivery']
+                if 'other' in terms_data and terms_data['other']:
+                    terms.other_id = terms_data['other']
+                
+                terms.save()
+            except QuotationTermsAndConditions.DoesNotExist:
+                # Create new terms and conditions
+                terms_obj = {
+                    'quotation': instance,
+                    'price': terms_data.get('price'),
+                    'validity': terms_data.get('validity')
+                }
+                
+                # Add related fields if they exist
+                if 'payment' in terms_data and terms_data['payment']:
+                    terms_obj['payment_id'] = terms_data['payment']
+                if 'delivery' in terms_data and terms_data['delivery']:
+                    terms_obj['delivery_id'] = terms_data['delivery']
+                if 'other' in terms_data and terms_data['other']:
+                    terms_obj['other_id'] = terms_data['other']
+                
+                QuotationTermsAndConditions.objects.create(**terms_obj)
         
         return instance
     

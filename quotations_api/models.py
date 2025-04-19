@@ -100,3 +100,42 @@ class QuotationAdditionalControls(models.Model):
     
     def __str__(self):
         return f"Additional Controls for {self.quotation.quote_number}"
+
+class Payment(models.Model):
+    """Model to store reusable payment terms"""
+    text = models.TextField()
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_payments')
+    created_on = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.text[:50]
+
+class Delivery(models.Model):
+    """Model to store reusable delivery terms"""
+    text = models.TextField()
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_deliveries')
+    created_on = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.text[:50]
+
+class Other(models.Model):
+    """Model to store reusable other terms"""
+    text = models.TextField()
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_others')
+    created_on = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.text[:50]
+
+class QuotationTermsAndConditions(models.Model):
+    """Model to store terms and conditions for a quotation"""
+    quotation = models.OneToOneField(Quotation, on_delete=models.CASCADE, related_name='terms_and_conditions')
+    price = models.TextField(blank=True, null=True)
+    payment = models.ForeignKey(Payment, on_delete=models.SET_NULL, null=True, blank=True, related_name='quotations')
+    delivery = models.ForeignKey(Delivery, on_delete=models.SET_NULL, null=True, blank=True, related_name='quotations')
+    validity = models.TextField(blank=True, null=True)
+    other = models.ForeignKey(Other, on_delete=models.SET_NULL, null=True, blank=True, related_name='quotations')
+    
+    def __str__(self):
+        return f"Terms for {self.quotation.quote_number}"
