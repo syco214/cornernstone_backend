@@ -7,11 +7,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
-from .models import Quotation, Payment, Delivery
+from .models import Quotation, Payment, Delivery, Other
 from admin_api.models import Customer
 from .serializers import (
     QuotationSerializer, QuotationCreateUpdateSerializer, CustomerListSerializer,
-    PaymentSerializer, DeliverySerializer
+    PaymentSerializer, DeliverySerializer, OtherSerializer
 )
 
 class QuotationView(APIView, PageNumberPagination):
@@ -350,6 +350,79 @@ class DeliveryView(APIView, PageNumberPagination):
     def delete(self, request, pk):
         delivery = get_object_or_404(Delivery, pk=pk)
         delivery.delete()
+        return Response({
+            'success': True,
+            'data': None
+        }, status=status.HTTP_200_OK)
+
+class OtherView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk=None):
+        if pk:
+            other = get_object_or_404(Other, pk=pk)
+            serializer = OtherSerializer(other)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        # Get search parameter
+        search = request.query_params.get('search', '')
+        
+        # Query others
+        others = Other.objects.all()
+        
+        # Apply search filter
+        if search:
+            others = others.filter(text__icontains=search)
+        
+        # Order by most recent
+        others = others.order_by('-created_on')
+        
+        # Pagination
+        page = self.paginate_queryset(others, request)
+        if page is not None:
+            serializer = OtherSerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+        
+        # Fallback if pagination fails
+        serializer = OtherSerializer(others, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+    
+    def post(self, request):
+        serializer = OtherSerializer(data=request.data)
+        if serializer.is_valid():
+            # Set the created_by field
+            other = serializer.save(created_by=request.user)
+            return Response({
+                'success': True,
+                'data': OtherSerializer(other).data
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                'success': False,
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        other = get_object_or_404(Other, pk=pk)
+        other.delete()
         return Response({
             'success': True,
             'data': None
