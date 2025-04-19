@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from .models import (
-    Quotation, QuotationAttachment, QuotationSalesAgent
+    Quotation, QuotationAttachment, QuotationSalesAgent, QuotationAdditionalControls
 )
 from admin_api.models import Customer
+import json
 
 class QuotationAttachmentSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(required=False)
@@ -20,11 +21,17 @@ class QuotationSalesAgentSerializer(serializers.ModelSerializer):
         fields = ['id', 'agent_name', 'role']
         read_only_fields = ['id']
 
+class QuotationAdditionalControlsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuotationAdditionalControls
+        fields = ['show_carton_packing', 'do_not_show_all_photos', 'highlight_item_notes', 'show_devaluation_clause']
+
 class QuotationSerializer(serializers.ModelSerializer):
     attachments = QuotationAttachmentSerializer(many=True, read_only=True)
     sales_agents = QuotationSalesAgentSerializer(many=True, read_only=True)
     customer_name = serializers.StringRelatedField(source='customer', read_only=True)
     main_agent = serializers.SerializerMethodField()
+    additional_controls = QuotationAdditionalControlsSerializer(read_only=True)
     
     class Meta:
         model = Quotation
@@ -32,7 +39,7 @@ class QuotationSerializer(serializers.ModelSerializer):
             'id', 'quote_number', 'status', 'customer', 'customer_name', 'date',
             'total_amount', 'created_by', 'created_on', 'last_modified_by',
             'last_modified_on', 'purchase_request', 'expiry_date', 'currency',
-            'notes', 'attachments', 'sales_agents', 'main_agent'
+            'notes', 'attachments', 'sales_agents', 'main_agent', 'additional_controls'
         ]
         read_only_fields = [
             'id', 'quote_number', 'created_on', 'last_modified_on',
@@ -48,13 +55,14 @@ class QuotationSerializer(serializers.ModelSerializer):
 class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
     attachments = QuotationAttachmentSerializer(many=True, required=False)
     sales_agents = QuotationSalesAgentSerializer(many=True, required=False)
+    additional_controls = QuotationAdditionalControlsSerializer(required=False)
     
     class Meta:
         model = Quotation
         fields = [
             'id', 'quote_number', 'status', 'customer', 'date',
             'total_amount', 'purchase_request', 'expiry_date', 'currency',
-            'notes', 'attachments', 'sales_agents'
+            'notes', 'attachments', 'sales_agents', 'additional_controls'
         ]
         read_only_fields = ['id', 'quote_number']
     
@@ -68,6 +76,7 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         attachments_data = validated_data.pop('attachments', [])
         sales_agents_data = validated_data.pop('sales_agents', [])
+        additional_controls_data = validated_data.pop('additional_controls', None)
         
         # Set the created_by field
         request = self.context.get('request')
@@ -84,21 +93,41 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
         # Create sales agents
         for agent_data in sales_agents_data:
             QuotationSalesAgent.objects.create(quotation=quotation, **agent_data)
+        
+        # Create additional controls
+        if additional_controls_data:
+            QuotationAdditionalControls.objects.create(quotation=quotation, **additional_controls_data)
+        else:
+            # Create with default values
+            QuotationAdditionalControls.objects.create(quotation=quotation)
             
         return quotation
     
     def update(self, instance, validated_data):
+        # Extract nested data
         attachments_data = validated_data.pop('attachments', None)
         sales_agents_data = validated_data.pop('sales_agents', None)
         
-        # Set the last_modified_by field
+        # Extract additional controls data from the request directly
         request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            validated_data['last_modified_by'] = request.user
+        additional_controls_data = None
         
-        # Update quotation fields
+        if request and 'data' in request.data:
+            try:
+                request_data = json.loads(request.data['data'])
+                if 'additional_controls' in request_data:
+                    additional_controls_data = request_data['additional_controls']
+            except (json.JSONDecodeError, KeyError):
+                pass
+        
+        # Update the quotation instance with validated data
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        
+        # Set the last modified by user
+        if request and hasattr(request, 'user'):
+            instance.last_modified_by = request.user
+        
         instance.save()
         
         # Update attachments if provided
@@ -118,7 +147,17 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
                 QuotationSalesAgent, 
                 'quotation'
             )
-            
+        
+        # Update additional controls if provided
+        if additional_controls_data is not None:
+            try:
+                controls = instance.additional_controls
+                for attr, value in additional_controls_data.items():
+                    setattr(controls, attr, value)
+                controls.save()
+            except QuotationAdditionalControls.DoesNotExist:
+                QuotationAdditionalControls.objects.create(quotation=instance, **additional_controls_data)
+        
         return instance
     
     def _update_nested_objects(self, queryset, data_list, model_class, parent_field_name):

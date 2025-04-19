@@ -90,3 +90,13 @@ class QuotationSalesAgent(models.Model):
     
     def __str__(self):
         return f"{self.quotation.quote_number} - {self.agent_name} ({self.get_role_display()})"
+
+class QuotationAdditionalControls(models.Model):
+    quotation = models.OneToOneField(Quotation, on_delete=models.CASCADE, related_name='additional_controls')
+    show_carton_packing = models.BooleanField(default=True)
+    do_not_show_all_photos = models.BooleanField(default=True)
+    highlight_item_notes = models.BooleanField(default=True)
+    show_devaluation_clause = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"Additional Controls for {self.quotation.quote_number}"
