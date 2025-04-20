@@ -139,3 +139,22 @@ class QuotationTermsAndConditions(models.Model):
     
     def __str__(self):
         return f"Terms for {self.quotation.quote_number}"
+
+class QuotationContact(models.Model):
+    """Model to store contact information for a quotation"""
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='contacts')
+    customer_contact = models.ForeignKey(
+        'admin_api.CustomerContact', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='quotation_contacts'
+    )
+    
+    class Meta:
+        ordering = ['customer_contact__contact_person']
+    
+    def __str__(self):
+        if self.customer_contact:
+            return f"{self.quotation.quote_number} - {self.customer_contact.contact_person}"
+        return f"{self.quotation.quote_number} - Unknown Contact"

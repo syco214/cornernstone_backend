@@ -8,10 +8,10 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from .models import Quotation, Payment, Delivery, Other
-from admin_api.models import Customer
+from admin_api.models import Customer, CustomerContact
 from .serializers import (
     QuotationSerializer, QuotationCreateUpdateSerializer, CustomerListSerializer,
-    PaymentSerializer, DeliverySerializer, OtherSerializer
+    PaymentSerializer, DeliverySerializer, OtherSerializer, CustomerContactSerializer
 )
 
 class QuotationView(APIView, PageNumberPagination):
@@ -164,29 +164,54 @@ class QuotationView(APIView, PageNumberPagination):
             }, status=status.HTTP_400_BAD_REQUEST)
     
     def put(self, request, pk):
-        quotation = get_object_or_404(Quotation, pk=pk)
-        serializer = QuotationCreateUpdateSerializer(quotation, data=request.data, partial=True, context={'request': request})
+        """Update a quotation"""
         try:
+            quotation = get_object_or_404(Quotation, pk=pk)
+            
+            # Parse the JSON data
+            data = {}
+            if 'data' in request.data:
+                try:
+                    data = json.loads(request.data['data'])
+                except json.JSONDecodeError as e:
+                    return Response({
+                        'success': False,
+                        'errors': {'detail': f'Invalid JSON data: {str(e)}'}
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # If no 'data' field, use the request.data directly
+                data = request.data
+            
+            # Handle file uploads
+            files = request.FILES.getlist('files') if 'files' in request.FILES else []
+            
+            # Create serializer with the data
+            serializer = QuotationCreateUpdateSerializer(
+                quotation, 
+                data=data,
+                partial=True,  # Allow partial updates
+                context={'request': request, 'files': files}
+            )
+            
             if serializer.is_valid():
-                serializer.save()
+                updated_quotation = serializer.save()
+                
+                # Return the updated quotation
                 return Response({
                     'success': True,
-                    'data': serializer.data
+                    'data': QuotationSerializer(updated_quotation).data
                 })
             else:
-                # Format validation errors
-                error_messages = {}
-                for field, errors in serializer.errors.items():
-                    error_messages[field] = errors[0] if isinstance(errors, list) else errors
                 return Response({
                     'success': False,
-                    'errors': error_messages
+                    'errors': serializer.errors
                 }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            import traceback
             return Response({
                 'success': False,
                 'errors': {'detail': str(e)}
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def delete(self, request, pk):
         quotation = get_object_or_404(Quotation, pk=pk)
@@ -427,3 +452,63 @@ class OtherView(APIView, PageNumberPagination):
             'success': True,
             'data': None
         }, status=status.HTTP_200_OK)
+
+class CustomerContactListView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        customer_id = request.query_params.get('customer_id')
+        
+        if not customer_id:
+            return Response({
+                'success': False,
+                'errors': {'detail': 'Customer ID is required'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get contacts for the specified customer
+        contacts = CustomerContact.objects.filter(customer_id=customer_id)
+        
+        # Apply search if provided
+        search = request.query_params.get('search', '')
+        if search:
+            contacts = contacts.filter(contact_person__icontains=search)
+        
+        # Paginate results
+        page = self.paginate_queryset(contacts, request)
+        if page is not None:
+            serializer = CustomerContactSerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+        
+        # Fallback if pagination fails
+        serializer = CustomerContactSerializer(contacts, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
+    
+    def post(self, request):
+        """Add a new contact to the customer's contacts"""
+        serializer = CustomerContactSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'success': True,
+                'data': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                'success': False,
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)

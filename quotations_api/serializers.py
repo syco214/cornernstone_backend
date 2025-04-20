@@ -1,9 +1,9 @@
 from rest_framework import serializers
 from .models import (
     Quotation, QuotationAttachment, QuotationSalesAgent, QuotationAdditionalControls,
-    Payment, Delivery, Other, QuotationTermsAndConditions
+    Payment, Delivery, Other, QuotationTermsAndConditions, QuotationContact
 )
-from admin_api.models import Customer
+from admin_api.models import Customer, CustomerContact
 import json
 
 class QuotationAttachmentSerializer(serializers.ModelSerializer):
@@ -60,6 +60,24 @@ class QuotationTermsAndConditionsSerializer(serializers.ModelSerializer):
     def get_other_text(self, obj):
         return obj.other.text if obj.other else None
 
+class CustomerContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomerContact
+        fields = [
+            'id', 'customer', 'contact_person', 'position', 'department', 
+            'email', 'mobile_number', 'office_number'
+        ]
+        extra_kwargs = {
+            'customer': {'required': True}
+        }
+
+class QuotationContactSerializer(serializers.ModelSerializer):
+    contact_details = CustomerContactSerializer(source='customer_contact', read_only=True)
+    
+    class Meta:
+        model = QuotationContact
+        fields = ['id', 'customer_contact', 'contact_details']
+
 class QuotationSerializer(serializers.ModelSerializer):
     attachments = QuotationAttachmentSerializer(many=True, read_only=True)
     sales_agents = QuotationSalesAgentSerializer(many=True, read_only=True)
@@ -67,6 +85,7 @@ class QuotationSerializer(serializers.ModelSerializer):
     main_agent = serializers.SerializerMethodField()
     additional_controls = QuotationAdditionalControlsSerializer(read_only=True)
     terms_and_conditions = QuotationTermsAndConditionsSerializer(read_only=True)
+    contacts = QuotationContactSerializer(many=True, read_only=True)
     
     class Meta:
         model = Quotation
@@ -75,7 +94,7 @@ class QuotationSerializer(serializers.ModelSerializer):
             'date', 'expiry_date', 'total_amount', 'currency',
             'purchase_request', 'notes', 'created_on', 'last_modified_on',
             'attachments', 'sales_agents', 'main_agent', 'additional_controls',
-            'terms_and_conditions'
+            'terms_and_conditions', 'contacts'
         ]
         read_only_fields = [
             'id', 'quote_number', 'created_on', 'last_modified_on',
@@ -92,13 +111,20 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
     attachments = QuotationAttachmentSerializer(many=True, required=False)
     sales_agents = QuotationSalesAgentSerializer(many=True, required=False)
     additional_controls = QuotationAdditionalControlsSerializer(required=False)
+    contacts = serializers.PrimaryKeyRelatedField(
+        queryset=CustomerContact.objects.all(),
+        many=True,
+        required=False,
+        write_only=True
+    )
     
     class Meta:
         model = Quotation
         fields = [
             'id', 'quote_number', 'status', 'customer', 'date',
             'total_amount', 'purchase_request', 'expiry_date', 'currency',
-            'notes', 'attachments', 'sales_agents', 'additional_controls'
+            'notes', 'attachments', 'sales_agents', 'additional_controls',
+            'contacts'
         ]
         read_only_fields = ['id', 'quote_number']
     
@@ -113,6 +139,7 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
         attachments_data = validated_data.pop('attachments', [])
         sales_agents_data = validated_data.pop('sales_agents', [])
         additional_controls_data = validated_data.pop('additional_controls', None)
+        contacts_data = validated_data.pop('contacts', [])
         
         # Set the created_by field
         request = self.context.get('request')
@@ -136,6 +163,13 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
         else:
             # Create with default values
             QuotationAdditionalControls.objects.create(quotation=quotation)
+        
+        # Create quotation contacts
+        for contact in contacts_data:
+            QuotationContact.objects.create(
+                quotation=quotation,
+                customer_contact=contact
+            )
             
         return quotation
     
@@ -143,18 +177,11 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
         # Extract nested data
         attachments_data = validated_data.pop('attachments', None)
         sales_agents_data = validated_data.pop('sales_agents', None)
+        contacts_data = validated_data.pop('contacts', None)
+        additional_controls_data = validated_data.pop('additional_controls', None)
         
-        # Extract additional controls data from the request directly
+        # Get the request from context
         request = self.context.get('request')
-        additional_controls_data = None
-        
-        if request and 'data' in request.data:
-            try:
-                request_data = json.loads(request.data['data'])
-                if 'additional_controls' in request_data:
-                    additional_controls_data = request_data['additional_controls']
-            except (json.JSONDecodeError, KeyError):
-                pass
         
         # Extract terms and conditions data from the request
         terms_data = None
@@ -202,7 +229,22 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
                     setattr(controls, attr, value)
                 controls.save()
             except QuotationAdditionalControls.DoesNotExist:
-                QuotationAdditionalControls.objects.create(quotation=instance, **additional_controls_data)
+                QuotationAdditionalControls.objects.create(
+                    quotation=instance, 
+                    **additional_controls_data
+                )
+        
+        # Update contacts if provided
+        if contacts_data is not None:
+            # Clear existing contacts
+            QuotationContact.objects.filter(quotation=instance).delete()
+            
+            # Create new contacts
+            for contact in contacts_data:
+                QuotationContact.objects.create(
+                    quotation=instance,
+                    customer_contact=contact
+                )
         
         # Update terms and conditions if provided
         if terms_data is not None:
