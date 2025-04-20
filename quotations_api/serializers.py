@@ -294,6 +294,13 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
         existing_ids = set(queryset.values_list('id', flat=True))
         updated_ids = set()
         
+        # Special handling for sales agents to avoid unique constraint violations
+        if model_class == QuotationSalesAgent:
+            # First, delete any existing main agents if we're adding a new one
+            main_agent_in_data = any(data.get('role') == 'main' for data in data_list)
+            if main_agent_in_data:
+                queryset.filter(role='main').delete()
+        
         # Create or update objects
         for data in data_list:
             obj_id = data.get('id')
