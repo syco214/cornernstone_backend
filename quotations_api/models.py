@@ -158,3 +158,83 @@ class QuotationContact(models.Model):
         if self.customer_contact:
             return f"{self.quotation.quote_number} - {self.customer_contact.contact_person}"
         return f"{self.quotation.quote_number} - Unknown Contact"
+
+class QuotationItem(models.Model):
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='items')
+    inventory = models.ForeignKey('admin_api.Inventory', on_delete=models.PROTECT)
+    
+    # Fields that can be overridden from inventory
+    wholesale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    unit = models.CharField(max_length=50, blank=True)
+    photo = models.ImageField(upload_to='quotation_item_photos/', null=True, blank=True)
+    external_description = models.TextField(blank=True)
+    
+    # Additional fields
+    show_brand = models.BooleanField(default=True)
+    show_made_in = models.BooleanField(default=True)
+    actual_landed_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    estimated_landed_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(blank=True)
+    quantity = models.PositiveIntegerField(default=1)
+    show_photo = models.BooleanField(default=True)
+    baseline_margin = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Discount fields
+    has_discount = models.BooleanField(default=False)
+    discount_type = models.CharField(max_length=10, choices=[('value', 'Value'), ('percentage', 'Percentage')], default='percentage')
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # Calculated fields (stored for performance)
+    landed_cost_discount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    net_selling = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    total_selling = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['id']
+    
+    def __str__(self):
+        return f"{self.inventory.item_code} - {self.inventory.product_name}"
+    
+    def save(self, *args, **kwargs):
+        # Calculate fields before saving
+        self.calculate_fields()
+        super().save(*args, **kwargs)
+    
+    def calculate_fields(self):
+        # Calculate landed_cost_discount
+        if self.estimated_landed_cost:
+            self.landed_cost_discount = self.estimated_landed_cost
+        
+        # Calculate net_selling based on discount
+        if self.wholesale_price:
+            if self.has_discount:
+                if self.discount_type == 'percentage' and self.discount_percentage:
+                    self.net_selling = self.wholesale_price * (1 - self.discount_percentage / 100)
+                elif self.discount_type == 'value' and self.discount_value:
+                    self.net_selling = self.wholesale_price - self.discount_value
+                else:
+                    self.net_selling = self.wholesale_price
+            else:
+                self.net_selling = self.wholesale_price
+        
+        # Calculate total_selling
+        if self.net_selling and self.quantity:
+            self.total_selling = self.net_selling * self.quantity
+
+class LastQuotedPrice(models.Model):
+    inventory = models.ForeignKey('admin_api.Inventory', on_delete=models.CASCADE)
+    customer = models.ForeignKey('admin_api.Customer', on_delete=models.CASCADE)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE)
+    quoted_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['inventory', 'customer']
+        ordering = ['-quoted_at']
+    
+    def __str__(self):
+        return f"{self.inventory.item_code} - {self.customer.name}: {self.price}"
