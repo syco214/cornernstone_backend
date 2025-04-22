@@ -13,6 +13,8 @@ from .serializers import (
     QuotationSerializer, QuotationCreateUpdateSerializer, CustomerListSerializer,
     PaymentSerializer, DeliverySerializer, OtherSerializer, CustomerContactSerializer
 )
+from django.http import HttpResponse, FileResponse
+from .pdf_template import generate_quotation_pdf
 
 class QuotationView(APIView, PageNumberPagination):
     permission_classes = [IsAuthenticated]
@@ -512,3 +514,31 @@ class CustomerContactListView(APIView, PageNumberPagination):
                 'success': False,
                 'errors': serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
+
+class QuotationPDFView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk):
+        """
+        Generate and download a PDF for the specified quotation
+        """
+        try:
+            # Get the quotation
+            quotation = get_object_or_404(Quotation, pk=pk)
+            
+            # Generate the PDF
+            pdf_buffer = generate_quotation_pdf(quotation)
+            
+            # Create the HTTP response with PDF content
+            response = HttpResponse(pdf_buffer, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{quotation.quote_number}.pdf"'
+            
+            return response
+        except Exception as e:
+            import traceback
+            print(f"PDF generation error: {str(e)}")
+            print(traceback.format_exc())
+            return Response(
+                {'success': False, 'errors': {'detail': str(e)}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
