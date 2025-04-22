@@ -7,14 +7,18 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
-from .models import Quotation, Payment, Delivery, Other
-from admin_api.models import Customer, CustomerContact
+from .models import Quotation, Payment, Delivery, Other, QuotationItem
+from admin_api.models import Customer, CustomerContact, Inventory
 from .serializers import (
     QuotationSerializer, QuotationCreateUpdateSerializer, CustomerListSerializer,
     PaymentSerializer, DeliverySerializer, OtherSerializer, CustomerContactSerializer
 )
 from django.http import HttpResponse, FileResponse
 from .pdf_template import generate_quotation_pdf
+import io
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl import load_workbook
 
 class QuotationView(APIView, PageNumberPagination):
     permission_classes = [IsAuthenticated]
@@ -540,5 +544,176 @@ class QuotationPDFView(APIView):
             print(traceback.format_exc())
             return Response(
                 {'success': False, 'errors': {'detail': str(e)}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class QuotationItemsTemplateView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk=None):
+        """Download an Excel template for bulk uploading quotation items"""
+        # Verify the quotation exists
+        quotation = get_object_or_404(Quotation, pk=pk)
+        
+        # Create a new workbook and select the active worksheet
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Items Template"
+        
+        # Add headers
+        headers = ['item_code', 'quantity']
+        for col_num, header in enumerate(headers, 1):
+            col_letter = get_column_letter(col_num)
+            ws[f'{col_letter}1'] = header
+        
+        # Add example row
+        ws['A2'] = 'ABC123'
+        ws['B2'] = 1
+        
+        # Save to a BytesIO object
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Create response
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="quotation_{quotation.quote_number}_items_template.xlsx"'
+        
+        return response
+
+class QuotationItemsUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk=None):
+        """Upload an Excel file with item codes and quantities to add to the quotation"""
+        try:
+            quotation = get_object_or_404(Quotation, pk=pk)
+            
+            if 'file' not in request.FILES:
+                return Response(
+                    {'success': False, 'errors': 'No file uploaded'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            file = request.FILES['file']
+            
+            # Check file extension
+            if not (file.name.endswith('.xlsx') or file.name.endswith('.xls')):
+                return Response(
+                    {'success': False, 'errors': 'File must be an Excel file (.xlsx or .xls)'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Process the Excel file
+            try:
+                # Load the workbook
+                wb = load_workbook(filename=io.BytesIO(file.read()))
+                ws = wb.active
+                
+                # Get headers from the first row
+                headers = [cell.value for cell in ws[1]]
+                
+                # Validate required columns
+                required_columns = ['item_code', 'quantity']
+                for col in required_columns:
+                    if col not in headers:
+                        return Response(
+                            {'success': False, 'errors': f'Missing required column: {col}'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                
+                # Get column indices
+                item_code_idx = headers.index('item_code')
+                quantity_idx = headers.index('quantity')
+                
+                # Process each row
+                results = {
+                    'success': True,
+                    'added': 0,
+                    'errors': [],
+                    'total_rows': ws.max_row - 1  # Subtract header row
+                }
+                
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+                    # Validate item_code
+                    item_code = str(row[item_code_idx] or '').strip()
+                    if not item_code:
+                        results['errors'].append(f'Line {row_idx}: Item code is empty')
+                        continue
+                    
+                    # Validate quantity
+                    try:
+                        quantity_value = row[quantity_idx]
+                        if quantity_value is None:
+                            results['errors'].append(f'Line {row_idx}: Quantity is empty')
+                            continue
+                            
+                        quantity = int(float(quantity_value))
+                        if quantity <= 0:
+                            results['errors'].append(f'Line {row_idx}: Quantity must be a positive number')
+                            continue
+                    except (ValueError, TypeError):
+                        results['errors'].append(f'Line {row_idx}: Invalid quantity format')
+                        continue
+                    
+                    # Find inventory item
+                    try:
+                        inventory = Inventory.objects.get(item_code=item_code)
+                    except Inventory.DoesNotExist:
+                        results['errors'].append(f'Line {row_idx}: Item code "{item_code}" not found')
+                        continue
+                    
+                    # Create quotation item
+                    try:
+                        # Check if item already exists in this quotation
+                        existing_item = QuotationItem.objects.filter(quotation=quotation, inventory=inventory).first()
+                        
+                        if existing_item:
+                            # Update quantity if item already exists
+                            existing_item.quantity = quantity
+                            existing_item.save()
+                        else:
+                            # Create new item
+                            QuotationItem.objects.create(
+                                quotation=quotation,
+                                inventory=inventory,
+                                quantity=quantity,
+                                wholesale_price=inventory.wholesale_price,
+                                unit=inventory.unit,
+                                external_description=inventory.external_description
+                            )
+                        
+                        results['added'] += 1
+                    except Exception as e:
+                        results['errors'].append(f'Line {row_idx}: Failed to add item - {str(e)}')
+                
+                # Update quotation total amount
+                quotation_items = quotation.items.all()
+                total_amount = 0
+                for item in quotation_items:
+                    if item.total_selling is not None:
+                        total_amount += item.total_selling
+                
+                quotation.total_amount = total_amount
+                quotation.save()
+                
+                return Response(results)
+                
+            except Exception as e:
+                import traceback
+                print(traceback.format_exc())
+                return Response(
+                    {'success': False, 'errors': f'Error processing Excel file: {str(e)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return Response(
+                {'success': False, 'errors': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
