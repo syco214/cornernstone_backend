@@ -64,6 +64,7 @@ CORS_ORIGIN_ALLOW_ALL = False  # Set to False in production
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "https://cornerstonesystem.net",
 ]
 
 CORS_ALLOW_METHODS = [
