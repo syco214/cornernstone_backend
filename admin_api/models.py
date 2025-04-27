@@ -491,6 +491,7 @@ class Inventory(models.Model):
     last_modified_at = models.DateTimeField(auto_now=True)
     
     item_code = models.CharField(max_length=50, unique=True)
+    cip_code = models.CharField(max_length=50, unique=True)
     product_name = models.CharField(max_length=200)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
     

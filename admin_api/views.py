@@ -1401,6 +1401,7 @@ class InventoryView(APIView, PageNumberPagination):
         
         # Get search parameters for specific fields
         item_code_search = request.query_params.get('item_code', '')
+        cip_code_search = request.query_params.get('cip_code', '')
         product_name_search = request.query_params.get('product_name', '')
         brand_search = request.query_params.get('brand', '')
         
@@ -1423,6 +1424,9 @@ class InventoryView(APIView, PageNumberPagination):
         # Apply field-specific search filters
         if item_code_search:
             inventory_items = inventory_items.filter(item_code__icontains=item_code_search)
+
+        if cip_code_search:
+            inventory_items = inventory_items.filter(cip_code__icontains=cip_code_search)
         
         if product_name_search:
             inventory_items = inventory_items.filter(product_name__icontains=product_name_search)
@@ -1460,10 +1464,11 @@ class InventoryView(APIView, PageNumberPagination):
                 pass
 
         # Apply general search filter if no specific filters are provided
-        if general_search and not any([item_code_search, product_name_search, brand_search, 
+        if general_search and not any([item_code_search, cip_code_search, product_name_search, brand_search, 
                                       status_filter, supplier_id, brand_id, category_id]):
             inventory_items = inventory_items.filter(
                 Q(item_code__icontains=general_search) |
+                Q(cip_code__icontains=general_search) |
                 Q(product_name__icontains=general_search) |
                 Q(product_tagging__icontains=general_search)
             )
@@ -1519,7 +1524,7 @@ class InventoryTemplateView(APIView):
         
         # Define headers
         headers = [
-            'Item Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
+            'Item Code*', 'CIP Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
             'Product Tagging*', 'Audit Status*', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID',
             'Unit', 'Landed Cost Price', 'Landed Cost Unit', 'Packaging Amount',
             'Packaging Units', 'Packaging Package', 'External Description',
@@ -1606,6 +1611,7 @@ class InventoryUploadView(APIView):
             # Rename columns to match model field names
             column_mapping = {
                 'Item Code*': 'item_code',
+                'CIP Code*': 'cip_code',
                 'Product Name*': 'product_name',
                 'Status*': 'status',
                 'Supplier ID*': 'supplier',
@@ -1818,7 +1824,7 @@ class InventoryGeneralView(APIView):
     def post(self, request):
         # Extract only general fields from request data
         general_fields = [
-            'item_code', 'product_name', 'status', 'supplier', 'brand',
+            'item_code', 'cip_code', 'product_name', 'status', 'supplier', 'brand',
             'product_tagging', 'category', 'subcategory', 'sub_level_category'
         ]
         general_data = {k: v for k, v in request.data.items() if k in general_fields}
@@ -1851,7 +1857,7 @@ class InventoryGeneralView(APIView):
         
         # Extract only general fields from request data
         general_fields = [
-            'item_code', 'product_name', 'status', 'supplier', 'brand',
+            'item_code', 'cip_code', 'product_name', 'status', 'supplier', 'brand',
             'product_tagging', 'category', 'subcategory', 'sub_level_category'
         ]
         general_data = {k: v for k, v in request.data.items() if k in general_fields}

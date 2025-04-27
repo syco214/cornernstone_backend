@@ -816,7 +816,7 @@ class InventorySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'created_by', 'created_by_name', 'created_at', 
             'last_modified_by', 'last_modified_by_name', 'last_modified_at',
-            'item_code', 'product_name', 'status', 
+            'item_code', 'cip_code', 'product_name', 'status', 
             'supplier', 'supplier_name', 'brand', 'brand_name', 'made_in',
             'product_tagging', 'audit_status', 'category', 'category_name', 
             'subcategory', 'subcategory_name', 
