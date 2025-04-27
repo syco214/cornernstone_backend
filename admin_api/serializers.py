@@ -862,40 +862,18 @@ class InventorySerializer(serializers.ModelSerializer):
     
     def get_photo_url(self, obj):
         request = self.context.get('request')
-        print(f"DEBUG: Request object exists: {request is not None}")
-        
         if obj.photo and hasattr(obj.photo, 'url'):
-            print(f"DEBUG: Photo URL from Django: {obj.photo.url}")
-            
             if request:
-                # Debug request information
-                print(f"DEBUG: Request host: {request.get_host()}")
-                print(f"DEBUG: Request scheme: {request.scheme}")
-                print(f"DEBUG: X-Forwarded-Host header: {request.META.get('HTTP_X_FORWARDED_HOST', 'Not present')}")
-                print(f"DEBUG: X-Forwarded-Proto header: {request.META.get('HTTP_X_FORWARDED_PROTO', 'Not present')}")
-                
-                # Build the absolute URI
                 absolute_uri = request.build_absolute_uri(obj.photo.url)
-                print(f"DEBUG: Final absolute URI: {absolute_uri}")
                 return absolute_uri
             else:
-                # Fallback for contexts without a request
                 base_url = getattr(settings, 'BASE_URL', '')
                 media_url = getattr(settings, 'MEDIA_URL', '/media/')
                 photo_path = obj.photo.url.lstrip('/')
                 media_url = media_url.rstrip('/') + '/'
                 base_url = base_url.rstrip('/')
-                
-                # Debug fallback URL construction
-                print(f"DEBUG: Base URL from settings: {base_url}")
-                print(f"DEBUG: Media URL from settings: {media_url}")
-                print(f"DEBUG: Photo path: {photo_path}")
-                
                 fallback_url = f"{base_url}{media_url}{photo_path}"
-                print(f"DEBUG: Final fallback URL: {fallback_url}")
                 return fallback_url
-        
-        print("DEBUG: No photo or photo URL attribute")
         return None
     
     def validate(self, data):
