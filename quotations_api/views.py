@@ -2,16 +2,17 @@ from datetime import datetime
 import json
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import status, viewsets, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
-from .models import Quotation, Payment, Delivery, Other, QuotationItem
+from .models import Quotation, Payment, Delivery, Other, QuotationItem, LastQuotedPrice
 from admin_api.models import Customer, CustomerContact, Inventory
 from .serializers import (
     QuotationSerializer, QuotationCreateUpdateSerializer, CustomerListSerializer,
-    PaymentSerializer, DeliverySerializer, OtherSerializer, CustomerContactSerializer
+    PaymentSerializer, DeliverySerializer, OtherSerializer, CustomerContactSerializer,
+    QuotationStatusUpdateSerializer, LastQuotedPriceSerializer
 )
 from django.http import HttpResponse, FileResponse
 from .pdf_template import generate_quotation_pdf
@@ -19,6 +20,7 @@ import io
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook
+from rest_framework.decorators import action
 
 class QuotationView(APIView, PageNumberPagination):
     permission_classes = [IsAuthenticated]
@@ -717,3 +719,159 @@ class QuotationItemsUploadView(APIView):
                 {'success': False, 'errors': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class QuotationViewSet(viewsets.ModelViewSet):
+    queryset = Quotation.objects.all()
+    serializer_class = QuotationSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, last_modified_by=self.request.user)
+    
+    def perform_update(self, serializer):
+        serializer.save(last_modified_by=self.request.user)
+    
+    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
+    def update_status(self, request, pk=None):
+        quotation = self.get_object()
+        serializer = QuotationStatusUpdateSerializer(
+            quotation, 
+            data=request.data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            # Return the full quotation data with updated status
+            return Response(QuotationSerializer(quotation).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class LastQuotedPriceViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = LastQuotedPrice.objects.all()
+    serializer_class = LastQuotedPriceSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = LastQuotedPrice.objects.all()
+        
+        # Filter by customer if provided
+        customer_id = self.request.query_params.get('customer')
+        if customer_id:
+            queryset = queryset.filter(customer_id=customer_id)
+            
+        # Filter by inventory if provided
+        inventory_id = self.request.query_params.get('inventory')
+        if inventory_id:
+            queryset = queryset.filter(inventory_id=inventory_id)
+            
+        return queryset
+
+class QuotationStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk):
+        """Update the status of a quotation"""
+        quotation = get_object_or_404(Quotation, pk=pk)
+        new_status = request.data.get('status')
+        
+        # Validate the requested status transition
+        if not new_status or new_status not in dict(Quotation.STATUS_CHOICES):
+            return Response({
+                'success': False,
+                'errors': {'status': 'Invalid status value'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user has permission for this status change
+        current_status = quotation.status
+        
+        # Any user can send a draft quotation for approval
+        if current_status == 'draft' and new_status == 'for_approval':
+            pass  # Allow this transition
+        # Only admin/supervisor can approve or reject
+        elif current_status == 'for_approval' and new_status in ['approved', 'rejected']:
+            # Check if user is admin or supervisor
+            if not (request.user.is_staff or request.user.groups.filter(name='Supervisor').exists()):
+                return Response({
+                    'success': False,
+                    'errors': {'detail': 'You do not have permission to approve or reject quotations'}
+                }, status=status.HTTP_403_FORBIDDEN)
+        else:
+            return Response({
+                'success': False,
+                'errors': {'status': f'Cannot change status from {current_status} to {new_status}'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update the quotation status
+        quotation.status = new_status
+        quotation.last_modified_by = request.user
+        quotation.save()
+        
+        # If approved, save the last quoted prices
+        if new_status == 'approved':
+            self._save_last_quoted_prices(quotation)
+        
+        # Return the updated quotation
+        return Response({
+            'success': True,
+            'data': QuotationSerializer(quotation).data
+        })
+    
+    def _save_last_quoted_prices(self, quotation):
+        """Save the last quoted prices for all items in the quotation"""
+        for item in quotation.items.all():
+            # Update or create LastQuotedPrice entry
+            LastQuotedPrice.objects.update_or_create(
+                inventory=item.inventory,
+                customer=quotation.customer,
+                defaults={
+                    'price': item.selling_price,
+                    'quotation': quotation,
+                }
+            )
+
+class LastQuotedPriceView(APIView, PageNumberPagination):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get last quoted prices with optional filtering"""
+        # Get filter parameters
+        customer_id = request.query_params.get('customer_id')
+        inventory_id = request.query_params.get('inventory_id')
+        
+        # Start with all records
+        queryset = LastQuotedPrice.objects.all()
+        
+        # Apply filters if provided
+        if customer_id:
+            queryset = queryset.filter(customer_id=customer_id)
+        
+        if inventory_id:
+            queryset = queryset.filter(inventory_id=inventory_id)
+        
+        # Order by most recent
+        queryset = queryset.order_by('-quoted_at')
+        
+        # Paginate results
+        page = self.paginate_queryset(queryset, request)
+        if page is not None:
+            serializer = LastQuotedPriceSerializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'meta': {
+                    'pagination': {
+                        'count': paginated_response.data['count'],
+                        'next': paginated_response.data['next'],
+                        'previous': paginated_response.data['previous'],
+                    }
+                }
+            })
+        
+        # Fallback if pagination fails
+        serializer = LastQuotedPriceSerializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })

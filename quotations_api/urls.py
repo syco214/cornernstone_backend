@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     QuotationView, CustomerListView, PaymentView, DeliveryView, OtherView, 
     CustomerContactListView, QuotationPDFView, QuotationItemsTemplateView, 
-    QuotationItemsUploadView
+    QuotationItemsUploadView, QuotationStatusView, LastQuotedPriceView
 )
 
 urlpatterns = [
@@ -19,4 +19,6 @@ urlpatterns = [
     path('others/<int:pk>/', OtherView.as_view(), name='other-detail'),
     path('customer-contacts/', CustomerContactListView.as_view(), name='customer-contact-list'),
     path('<int:pk>/pdf/', QuotationPDFView.as_view(), name='quotation-pdf'),
+    path('<int:pk>/status/', QuotationStatusView.as_view(), name='quotation-status-update'),
+    path('last-quoted-prices/', LastQuotedPriceView.as_view(), name='last-quoted-prices'),
 ]

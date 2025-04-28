@@ -13,6 +13,7 @@ class Quotation(models.Model):
         ('draft', 'Draft'),
         ('for_approval', 'For Approval'),
         ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
         ('expired', 'Expired'),
     ]
     

@@ -468,3 +468,58 @@ class CustomerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = ['id', 'name', 'registered_name']
+
+class QuotationStatusUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Quotation
+        fields = ['status']
+        
+    def validate_status(self, value):
+        """Validate the status transition"""
+        current_status = self.instance.status
+        
+        # Define valid transitions
+        valid_transitions = {
+            'draft': ['for_approval'],
+            'for_approval': ['approved', 'rejected', 'draft'],
+            'approved': ['expired'],
+            'rejected': ['draft'],
+            'expired': []
+        }
+        
+        if value not in valid_transitions.get(current_status, []):
+            raise serializers.ValidationError(
+                f"Cannot change status from '{current_status}' to '{value}'. "
+                f"Valid transitions are: {', '.join(valid_transitions.get(current_status, []))}"
+            )
+        
+        return value
+    
+    def validate(self, data):
+        """Additional validation based on user permissions"""
+        user = self.context['request'].user
+        new_status = data.get('status')
+        
+        # Check if user has permission for this status change
+        if new_status in ['approved', 'rejected']:
+            # Only admin/supervisor can approve or reject
+            if not (user.is_staff or user.groups.filter(name='Supervisor').exists()):
+                raise serializers.ValidationError({
+                    'status': 'You do not have permission to approve or reject quotations'
+                })
+        
+        return data
+
+class LastQuotedPriceSerializer(serializers.ModelSerializer):
+    inventory_code = serializers.CharField(source='inventory.item_code', read_only=True)
+    inventory_name = serializers.CharField(source='inventory.item_name', read_only=True)
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    quotation_number = serializers.CharField(source='quotation.quote_number', read_only=True)
+    
+    class Meta:
+        model = LastQuotedPrice
+        fields = [
+            'id', 'inventory', 'customer', 'price', 'quotation', 'quoted_at',
+            'inventory_code', 'inventory_name', 'customer_name', 'quotation_number'
+        ]
+        read_only_fields = ['quoted_at']
