@@ -237,7 +237,10 @@ class CustomerViewTests(TestCase):
                 {
                     'contact_person': 'Jane Smith',
                     'position': 'CEO',
-                    'department': 'Executive'
+                    'department': 'Executive',
+                    'email': 'jane@example.com',
+                    'mobile_number': '555-123-4567',
+                    'office_number': '555-987-6543'
                 }
             ],
             'payment_term': {

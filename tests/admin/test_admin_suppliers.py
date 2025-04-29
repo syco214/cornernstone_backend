@@ -48,12 +48,15 @@ class SupplierViewTests(TestCase):
             address='123 Test Street, Test City, Test Country'
         )
         
-        # Create contact for supplier1
+        # Create contact for supplier1 - updated to match current model
         self.contact1 = SupplierContact.objects.create(
             supplier=self.supplier1,
             contact_person='John Doe',
             position='Sales Manager',
-            department='Sales'
+            department='Sales',
+            mobile_number='123-456-7890',
+            office_number='123-456-7891',
+            email='john@example.com'
         )
         
         # Create bank for supplier1
@@ -143,7 +146,10 @@ class SupplierViewTests(TestCase):
                 {
                     'contact_person': 'Jane Smith',
                     'position': 'Procurement Officer',
-                    'department': 'Procurement'
+                    'department': 'Procurement',
+                    'mobile_number': '555-987-6543',  # Updated field name
+                    'office_number': '555-987-6544',  # Added required field
+                    'email': 'jane@example.com'
                 }
             ],
             'banks': [
@@ -209,7 +215,10 @@ class SupplierViewTests(TestCase):
                     'id': self.contact1.id,
                     'contact_person': 'Updated Person',
                     'position': self.contact1.position,
-                    'department': self.contact1.department
+                    'department': self.contact1.department,
+                    'mobile_number': self.contact1.mobile_number,
+                    'office_number': self.contact1.office_number,
+                    'email': self.contact1.email
                 }
             ],
             'banks': [

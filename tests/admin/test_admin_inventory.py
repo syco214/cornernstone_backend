@@ -63,6 +63,7 @@ class InventoryTests(TestCase):
         # Create test inventory
         self.inventory = Inventory.objects.create(
             item_code='TEST001',
+            cip_code='CIP001',
             product_name='Test Product',
             status='active',
             supplier=self.supplier,
@@ -83,6 +84,7 @@ class InventoryTests(TestCase):
         # Define common test data
         self.general_data = {
             'item_code': 'TEST002',
+            'cip_code': 'CIP002',
             'product_name': 'New Test Product',
             'status': 'active',
             'supplier': self.supplier.id,
@@ -137,6 +139,7 @@ class InventoryTests(TestCase):
         self.assertTrue(response.data['success'])
         self.assertEqual(response.data['data']['id'], self.inventory.id)
         self.assertEqual(response.data['data']['item_code'], 'TEST001')
+        self.assertEqual(response.data['data']['cip_code'], 'CIP001')
         self.assertEqual(response.data['data']['product_name'], 'Test Product')
         self.assertEqual(response.data['data']['supplier_name'], 'Test Supplier')
         self.assertEqual(response.data['data']['brand_name'], 'Test Brand')
@@ -150,6 +153,7 @@ class InventoryTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(response.data['success'])
         self.assertEqual(response.data['data']['item_code'], 'TEST002')
+        self.assertEqual(response.data['data']['cip_code'], 'CIP002')
         self.assertEqual(response.data['data']['product_name'], 'New Test Product')
         
         # Verify the inventory was created in the database
@@ -241,6 +245,7 @@ class InventoryTests(TestCase):
         # Create additional inventory items for testing search
         Inventory.objects.create(
             item_code='SEARCH001',
+            cip_code='CIPSEARCH001',
             product_name='Searchable Product',
             status='active',
             supplier=self.supplier,
@@ -265,6 +270,7 @@ class InventoryTests(TestCase):
         # Create an inactive inventory item
         Inventory.objects.create(
             item_code='INACTIVE001',
+            cip_code='CIPINACTIVE001',
             product_name='Inactive Product',
             status='inactive',
             supplier=self.supplier,
@@ -300,6 +306,7 @@ class InventoryTests(TestCase):
         # Create a second inventory item with the new supplier
         Inventory.objects.create(
             item_code='TEST004',
+            cip_code='CIP004',
             product_name='Imported Product',
             status='active',
             supplier=new_supplier,
@@ -335,6 +342,7 @@ class InventoryTests(TestCase):
         # Create a second inventory item with the new brand
         Inventory.objects.create(
             item_code='TEST002',
+            cip_code='CIP002',
             product_name='Another Product',
             status='active',
             supplier=self.supplier,
@@ -373,6 +381,7 @@ class InventoryTests(TestCase):
         # Create a second inventory item with the new category
         Inventory.objects.create(
             item_code='TEST003',
+            cip_code='CIP003',
             product_name='Office Chair',
             status='active',
             supplier=self.supplier,
@@ -411,6 +420,7 @@ class InventoryTests(TestCase):
         url = reverse('inventory-general-create')
         data = {
             'item_code': 'TEST005',
+            'cip_code': 'CIP005',
             'product_name': 'Invalid Product',
             'status': 'active',
             'supplier': self.supplier.id,
@@ -448,8 +458,9 @@ class InventoryTests(TestCase):
         
         # Check headers
         self.assertEqual(ws.cell(row=1, column=1).value, 'Item Code*')
-        self.assertEqual(ws.cell(row=1, column=2).value, 'Product Name*')
-        self.assertEqual(ws.cell(row=1, column=3).value, 'Status*')
+        self.assertEqual(ws.cell(row=1, column=2).value, 'CIP Code*')
+        self.assertEqual(ws.cell(row=1, column=3).value, 'Product Name*')
+        self.assertEqual(ws.cell(row=1, column=4).value, 'Status*')
     
     def test_upload_inventory(self):
         """Test uploading inventory data."""
@@ -461,7 +472,7 @@ class InventoryTests(TestCase):
         
         # Add headers - update these to match what your view expects
         headers = [
-            'Item Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
+            'Item Code*', 'CIP Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
             'Product Tagging*', 'Audit Status*', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
         ]
         for col_num, header in enumerate(headers, 1):
@@ -469,7 +480,7 @@ class InventoryTests(TestCase):
         
         # Add a row of data - make sure the values match the expected format
         data = [
-            'UPLOAD001', 'Uploaded Product', 'active', 
+            'UPLOAD001', 'CIPUPLOAD001', 'Uploaded Product', 'active', 
             str(self.supplier.id), str(self.brand.id), 'never_sold', 'False',
             str(self.category.id), str(self.subcategory.id), str(self.sub_level_category.id)
         ]
@@ -513,7 +524,7 @@ class InventoryTests(TestCase):
         
         # Add headers
         headers = [
-            'Item Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
+            'Item Code*', 'CIP Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
             'Product Tagging*', 'Audit Status*', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
         ]
         for col_num, header in enumerate(headers, 1):
@@ -521,7 +532,7 @@ class InventoryTests(TestCase):
         
         # Add a row with invalid data (invalid status, non-existent supplier)
         data = [
-            'INVALID001', 'Invalid Product', 'pending',  # Invalid status
+            'INVALID001', 'CIPINVALID001', 'Invalid Product', 'pending',  # Invalid status
             '9999',  # Non-existent supplier
             str(self.brand.id), 'never_sold', 'False',
             str(self.category.id), '', ''
@@ -570,7 +581,7 @@ class InventoryTests(TestCase):
         
         # Add headers
         headers = [
-            'Item Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
+            'Item Code*', 'CIP Code*', 'Product Name*', 'Status*', 'Supplier ID*', 'Brand ID*',
             'Product Tagging*', 'Audit Status*', 'Category ID*', 'Subcategory ID', 'Sub Level Category ID'
         ]
         for col_num, header in enumerate(headers, 1):
@@ -579,6 +590,7 @@ class InventoryTests(TestCase):
         # Add a row with duplicate item code
         data = [
             'TEST001',  # Already exists from setUp
+            'CIPDUP001',  # New CIP code
             'Duplicate Product', 'active', 
             str(self.supplier.id), str(self.brand.id), 'never_sold', 'False',
             str(self.category.id), str(self.subcategory.id), str(self.sub_level_category.id)
