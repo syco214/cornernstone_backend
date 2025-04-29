@@ -824,7 +824,7 @@ class QuotationStatusView(APIView):
                 inventory=item.inventory,
                 customer=quotation.customer,
                 defaults={
-                    'price': item.selling_price,
+                    'price': item.wholesale_price,
                     'quotation': quotation,
                 }
             )
