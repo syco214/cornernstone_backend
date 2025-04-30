@@ -80,6 +80,8 @@ class QuotationContactSerializer(serializers.ModelSerializer):
         fields = ['id', 'customer_contact', 'contact_details']
 
 class QuotationItemSerializer(serializers.ModelSerializer):
+    quotation = serializers.PrimaryKeyRelatedField(read_only=True)
+    inventory = serializers.PrimaryKeyRelatedField(queryset=Inventory.objects.all())
     item_code = serializers.CharField(source='inventory.item_code', read_only=True)
     product_name = serializers.CharField(source='inventory.product_name', read_only=True)
     brand = serializers.CharField(source='inventory.brand.name', read_only=True)
@@ -87,7 +89,7 @@ class QuotationItemSerializer(serializers.ModelSerializer):
     inventory_stock = serializers.DecimalField(source='inventory.stock_on_hand', max_digits=10, decimal_places=2, read_only=True)
     inventory_status = serializers.SerializerMethodField()
     last_quoted_price = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = QuotationItem
         fields = [
@@ -98,12 +100,14 @@ class QuotationItemSerializer(serializers.ModelSerializer):
             'last_quoted_price', 'landed_cost_discount', 'has_discount', 'discount_type',
             'discount_percentage', 'discount_value', 'net_selling', 'total_selling'
         ]
-        read_only_fields = ['id', 'inventory_status', 'last_quoted_price', 'landed_cost_discount', 'net_selling', 'total_selling']
-    
+        read_only_fields = [
+            'id', 'quotation', 'inventory_status', 'last_quoted_price',
+            'landed_cost_discount', 'net_selling', 'total_selling'
+        ]
+
     def get_inventory_status(self, obj):
         stock = obj.inventory.stock_on_hand
         quantity = obj.quantity
-        
         if quantity > 1:
             if stock == 0:
                 return "For Importation"
@@ -111,49 +115,37 @@ class QuotationItemSerializer(serializers.ModelSerializer):
                 return f"{stock} pcs In Stock, Balance for Importation"
             elif stock > 0 and quantity <= stock:
                 return "In Stock"
-        else:  # quantity = 1
-            if stock == 0:
-                return "For Importation"
-            else:
-                return f"{stock} pcs in stock"
-    
+        else:
+            return "For Importation" if stock == 0 else f"{stock} pcs in stock"
+
     def get_last_quoted_price(self, obj):
-        # Get the customer from the quotation
-        customer = obj.quotation.customer
-        
-        # Find the last quoted price for this inventory and customer
         try:
+            customer = obj.quotation.customer
             last_price = LastQuotedPrice.objects.filter(
                 inventory=obj.inventory,
                 customer=customer
             ).exclude(quotation=obj.quotation).order_by('-quoted_at').first()
-            
+
             if last_price:
                 return last_price.price
         except Exception:
             pass
-        
+
         return None
-    
+
     def create(self, validated_data):
-        # Get inventory data to pre-populate fields
         inventory = validated_data.get('inventory')
-        
-        # Pre-populate fields from inventory if not provided
+
         if inventory:
             if 'wholesale_price' not in validated_data or validated_data['wholesale_price'] is None:
                 validated_data['wholesale_price'] = inventory.wholesale_price
-            
             if 'unit' not in validated_data or not validated_data['unit']:
                 validated_data['unit'] = inventory.unit
-            
             if 'external_description' not in validated_data or not validated_data['external_description']:
                 validated_data['external_description'] = inventory.external_description
-        
-        # Create the item
+
         item = QuotationItem.objects.create(**validated_data)
-        
-        # Update or create LastQuotedPrice
+
         if item.wholesale_price and item.quotation.customer:
             LastQuotedPrice.objects.update_or_create(
                 inventory=item.inventory,
@@ -163,7 +155,7 @@ class QuotationItemSerializer(serializers.ModelSerializer):
                     'quotation': item.quotation
                 }
             )
-        
+
         return item
     
 class QuotationSerializer(serializers.ModelSerializer):
@@ -264,26 +256,25 @@ class QuotationCreateUpdateSerializer(serializers.ModelSerializer):
         
         # Create quotation items
         for item_data in items_data:
-            # Get inventory data to pre-populate fields
-            inventory_id = item_data.get('inventory')
-            if inventory_id:
-                try:
-                    inventory = Inventory.objects.get(id=inventory_id)
-                    
-                    # Pre-populate fields from inventory if not provided
-                    if 'wholesale_price' not in item_data or item_data['wholesale_price'] is None:
-                        item_data['wholesale_price'] = inventory.wholesale_price
-                    
-                    if 'unit' not in item_data or not item_data['unit']:
-                        item_data['unit'] = inventory.unit
-                    
-                    if 'external_description' not in item_data or not item_data['external_description']:
-                        item_data['external_description'] = inventory.external_description
-                except Inventory.DoesNotExist:
-                    pass
+            # Make a copy of the item data to avoid modifying the original
+            item_data_copy = item_data.copy()
+            
+            # Get inventory object
+            inventory = item_data_copy.get('inventory')
+            
+            # Pre-populate fields from inventory if not provided
+            if inventory:
+                if 'wholesale_price' not in item_data_copy or item_data_copy['wholesale_price'] is None:
+                    item_data_copy['wholesale_price'] = inventory.wholesale_price
+                
+                if 'unit' not in item_data_copy or not item_data_copy['unit']:
+                    item_data_copy['unit'] = inventory.unit
+                
+                if 'external_description' not in item_data_copy or not item_data_copy['external_description']:
+                    item_data_copy['external_description'] = inventory.external_description
             
             # Create the item
-            QuotationItem.objects.create(quotation=quotation, **item_data)
+            QuotationItem.objects.create(quotation=quotation, **item_data_copy)
         
         # Calculate and update total amount
         self._update_total_amount(quotation)
