@@ -64,8 +64,8 @@ class ParentCompanyTests(TestCase):
         )
         
         # URLs
-        self.list_url = reverse('parent-companies')
-        self.detail_url = reverse('parent-company-detail', args=[self.parent_company1.id])
+        self.list_url = reverse('admin_api:parent-companies')
+        self.detail_url = reverse('admin_api:parent-company-detail', args=[self.parent_company1.id])
         
         # Valid data for creating/updating
         self.valid_parent_company_data = {

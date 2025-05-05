@@ -53,8 +53,8 @@ class BrokerViewTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.list_url = reverse('brokers')
-        self.detail_url = reverse('broker-detail', args=[self.broker1.id])
+        self.list_url = reverse('admin_api:brokers')
+        self.detail_url = reverse('admin_api:broker-detail', args=[self.broker1.id])
     
     def test_get_broker_list(self):
         """Test retrieving a list of brokers."""

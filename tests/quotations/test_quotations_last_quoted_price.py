@@ -124,7 +124,7 @@ class LastQuotedPriceViewTests(APITestCase):
         )
         
         # URL for the last quoted price endpoint
-        self.url = reverse('last-quoted-prices')
+        self.url = reverse('quotations_api:last-quoted-prices')
     
     def test_get_all_last_quoted_prices(self):
         """Test retrieving all last quoted prices"""

@@ -9,7 +9,7 @@ from .views import (
     InventoryUploadView,
     SupplierListView,
 )
-
+app_name = 'inventory_api'
 urlpatterns = [
     path('', InventoryView.as_view(), name='inventory-list'),
     path('<int:pk>/', InventoryView.as_view(), name='inventory-detail'),

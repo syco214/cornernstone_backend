@@ -322,137 +322,166 @@ class InventoryUploadView(APIView):
             # Process each row
             success_count = 0
             error_rows = []
-            
+
             for index, row in df.iterrows():
-                row_num = index + 2  # +2 because Excel is 1-indexed and we have a header row
-                
-                # Convert row to dict and handle NaN values
+                row_num = index + 2  # Excel is 1-indexed + header row
                 row_data = row.to_dict()
                 for key, value in row_data.items():
                     if pd.isna(value):
                         row_data[key] = None
-                
+
+                validation_errors = {} # Initialize empty dict for errors for this row
+
+                # --- Perform ALL validations and collect errors ---
+
                 # Validate required fields
-                validation_errors = {}
                 for field in required_columns:
+                    # Special handling for boolean audit_status where False is valid
                     if field == 'audit_status' and row_data.get(field) is not None:
-                        # audit_status is a boolean, so False is a valid value
-                        continue
-                    if not row_data.get(field):
-                        validation_errors[field] = f'This field is required.'
-                
-                if validation_errors:
-                    error_rows.append({
-                        'row': row_num,
-                        'errors': validation_errors
-                    })
-                    continue
-                
-                # Validate status
-                if row_data.get('status') not in dict(Inventory.STATUS_CHOICES):
+                         # Allow False, None, True. Empty string or missing is caught below.
+                         if isinstance(row_data.get(field), str) and row_data.get(field) == '':
+                              validation_errors[field] = 'This field is required.'
+                         elif row_data.get(field) is None:
+                              # Check if it was originally NaN/None vs empty string
+                              original_value = row[field] # Get original value from Series
+                              if pd.isna(original_value): # If it was truly missing/NaN
+                                   validation_errors[field] = 'This field is required.'
+                              # If it was an empty string converted to None, it's caught above
+                    elif not row_data.get(field) and row_data.get(field) != False: # Check for empty/None, allow False
+                        validation_errors[field] = 'This field is required.'
+
+
+                # Validate status (only if not already missing)
+                if 'status' not in validation_errors and row_data.get('status') not in dict(Inventory.STATUS_CHOICES):
                     validation_errors['status'] = f'Status must be one of: {", ".join(dict(Inventory.STATUS_CHOICES).keys())}'
-                
-                # Validate product_tagging
-                if row_data.get('product_tagging') not in dict(Inventory.PRODUCT_TAGGING_CHOICES):
+
+                # Validate product_tagging (only if not already missing)
+                if 'product_tagging' not in validation_errors and row_data.get('product_tagging') not in dict(Inventory.PRODUCT_TAGGING_CHOICES):
                     validation_errors['product_tagging'] = f'Product Tagging must be one of: {", ".join(dict(Inventory.PRODUCT_TAGGING_CHOICES).keys())}'
-                
-                # Convert audit_status to boolean
-                if row_data.get('audit_status') is not None:
-                    if isinstance(row_data['audit_status'], str):
-                        if row_data['audit_status'].lower() in ('true', 't', 'yes', 'y', '1'):
+
+                # Convert and validate audit_status (only if not already missing)
+                if 'audit_status' not in validation_errors and row_data.get('audit_status') is not None:
+                    audit_status_val = row_data['audit_status']
+                    if isinstance(audit_status_val, str):
+                        if audit_status_val.lower() in ('true', 't', 'yes', 'y', '1'):
                             row_data['audit_status'] = True
-                        elif row_data['audit_status'].lower() in ('false', 'f', 'no', 'n', '0'):
+                        elif audit_status_val.lower() in ('false', 'f', 'no', 'n', '0'):
                             row_data['audit_status'] = False
                         else:
                             validation_errors['audit_status'] = 'Audit Status must be True or False.'
-                
-                # Validate foreign keys
-                try:
-                    supplier_id = int(row_data.get('supplier'))
-                    if not Supplier.objects.filter(id=supplier_id).exists():
-                        validation_errors['supplier'] = f'Supplier with ID {supplier_id} does not exist.'
-                    else:
-                        # Store the valid ID for the serializer
-                        row_data['supplier'] = supplier_id 
-                except (ValueError, TypeError):
-                    validation_errors['supplier'] = 'Supplier ID must be a number.'
-                
-                try:
-                    brand_id = int(row_data.get('brand'))
-                    if not Brand.objects.filter(id=brand_id).exists():
-                        validation_errors['brand'] = f'Brand with ID {brand_id} does not exist.'
-                except (ValueError, TypeError):
-                    validation_errors['brand'] = 'Brand ID must be a number.'
-                
-                try:
-                    category_id = int(row_data.get('category'))
-                    if not Category.objects.filter(id=category_id).exists():
-                        validation_errors['category'] = f'Category with ID {category_id} does not exist.'
-                except (ValueError, TypeError):
-                    validation_errors['category'] = 'Category ID must be a number.'
-                
-                # Validate subcategory if provided
-                if row_data.get('subcategory'):
+                    elif not isinstance(audit_status_val, bool):
+                         validation_errors['audit_status'] = 'Audit Status must be True or False.'
+                    # If it's already a bool (e.g., from Excel), it's fine
+
+                # Validate foreign keys (only if not already missing)
+                category_id = None # Keep track for subcategory validation
+                if 'supplier' not in validation_errors:
+                    try:
+                        supplier_id = int(row_data.get('supplier'))
+                        if not Supplier.objects.filter(id=supplier_id).exists():
+                            validation_errors['supplier'] = f'Supplier with ID {supplier_id} does not exist.'
+                        # No need to re-assign row_data['supplier'] here, serializer handles ID
+                    except (ValueError, TypeError):
+                        validation_errors['supplier'] = 'Supplier ID must be a valid number.'
+
+                if 'brand' not in validation_errors:
+                    try:
+                        brand_id = int(row_data.get('brand'))
+                        if not Brand.objects.filter(id=brand_id).exists():
+                            validation_errors['brand'] = f'Brand with ID {brand_id} does not exist.'
+                    except (ValueError, TypeError):
+                        validation_errors['brand'] = 'Brand ID must be a valid number.'
+
+                if 'category' not in validation_errors:
+                    try:
+                        category_id = int(row_data.get('category')) # Store for later use
+                        if not Category.objects.filter(id=category_id).exists():
+                            validation_errors['category'] = f'Category with ID {category_id} does not exist.'
+                    except (ValueError, TypeError):
+                        validation_errors['category'] = 'Category ID must be a valid number.'
+
+                # Validate subcategory if provided and category is valid
+                subcategory_id = None # Keep track for sub-level validation
+                if row_data.get('subcategory') and 'category' not in validation_errors and category_id is not None:
                     try:
                         subcategory_id = int(row_data.get('subcategory'))
                         subcategory = Category.objects.filter(id=subcategory_id).first()
-                        
                         if not subcategory:
                             validation_errors['subcategory'] = f'Subcategory with ID {subcategory_id} does not exist.'
                         elif subcategory.parent_id != category_id:
-                            validation_errors['subcategory'] = f'Subcategory must belong to the selected category.'
+                            validation_errors['subcategory'] = f'Subcategory must belong to the selected category (ID: {category_id}).'
                     except (ValueError, TypeError):
-                        validation_errors['subcategory'] = 'Subcategory ID must be a number.'
-                
-                # Validate sub_level_category if provided
-                if row_data.get('sub_level_category'):
+                        validation_errors['subcategory'] = 'Subcategory ID must be a valid number.'
+                elif row_data.get('subcategory') and ('category' in validation_errors or category_id is None):
+                     # Avoid validating subcategory if category itself is invalid/missing
+                     pass
+
+
+                # Validate sub_level_category if provided and subcategory is valid
+                if row_data.get('sub_level_category') and 'subcategory' not in validation_errors and subcategory_id is not None:
                     try:
                         sub_level_id = int(row_data.get('sub_level_category'))
                         sub_level = Category.objects.filter(id=sub_level_id).first()
-                        
                         if not sub_level:
                             validation_errors['sub_level_category'] = f'Sub Level Category with ID {sub_level_id} does not exist.'
-                        elif not row_data.get('subcategory') or sub_level.parent_id != int(row_data.get('subcategory')):
-                            validation_errors['sub_level_category'] = f'Sub Level Category must belong to the selected subcategory.'
+                        elif sub_level.parent_id != subcategory_id:
+                            validation_errors['sub_level_category'] = f'Sub Level Category must belong to the selected subcategory (ID: {subcategory_id}).'
                     except (ValueError, TypeError):
-                        validation_errors['sub_level_category'] = 'Sub Level Category ID must be a number.'
-                
-                # Check for duplicate item_code
-                if Inventory.objects.filter(item_code=row_data.get('item_code')).exists():
+                        validation_errors['sub_level_category'] = 'Sub Level Category ID must be a valid number.'
+                elif row_data.get('sub_level_category') and ('subcategory' in validation_errors or subcategory_id is None):
+                     # Avoid validating sub-level if subcategory itself is invalid/missing
+                     pass
+
+                # Check for duplicate item_code (only if not already missing)
+                if 'item_code' not in validation_errors and Inventory.objects.filter(item_code=row_data.get('item_code')).exists():
                     validation_errors['item_code'] = f'Item Code {row_data.get("item_code")} already exists.'
-                
+
+                # --- End of Validations ---
+
+                # If any errors were found during manual checks, record them and skip to next row
                 if validation_errors:
                     error_rows.append({
                         'row': row_num,
                         'errors': validation_errors
                     })
-                    continue
-                
-                # If we get here, the row is valid, so create the inventory item
+                    continue # Skip serializer validation/creation for this row
+
+                # If manual checks passed, proceed with serializer validation and creation
                 try:
-                    # Set has_description flag if any description field is provided
+                    # Set has_description flag
                     description_fields = [
-                        'unit', 'landed_cost_price', 'landed_cost_unit', 'packaging_amount', 
-                        'packaging_units', 'packaging_package', 'external_description', 'length', 
+                        'unit', 'landed_cost_price', 'landed_cost_unit', 'packaging_amount',
+                        'packaging_units', 'packaging_package', 'external_description', 'length',
                         'length_unit', 'color', 'width', 'width_unit', 'height', 'height_unit',
                         'volume', 'volume_unit', 'materials', 'list_price_currency',
                         'list_price', 'wholesale_price', 'remarks'
                     ]
-                    
                     has_description = any(row_data.get(field) for field in description_fields)
                     row_data['has_description'] = has_description
-                    
-                    # Set the current user
-                    row_data['created_by'] = request.user
-                    row_data['last_modified_by'] = request.user
-                    
-                    # Use serializer for creation to leverage its validation and user handling
+
+                    # Prepare data for serializer (ensure FKs are IDs)
+                    # Pandas might convert IDs to floats if there were NaNs, ensure they are ints if not None
+                    for fk_field in ['supplier', 'brand', 'category', 'subcategory', 'sub_level_category']:
+                         if row_data.get(fk_field) is not None:
+                              try:
+                                   row_data[fk_field] = int(row_data[fk_field])
+                              except (ValueError, TypeError):
+                                   # This case should have been caught earlier, but as a safeguard:
+                                   error_rows.append({'row': row_num, 'errors': {fk_field: 'Invalid ID format.'}})
+                                   validation_errors[fk_field] = 'Invalid ID format.' # Mark error to prevent saving
+                                   break # Stop processing this row
+
+                    if validation_errors: # Check again if FK conversion failed
+                         continue
+
+                    # Use serializer for creation
                     serializer = InventorySerializer(data=row_data, context={'request': request})
                     if serializer.is_valid():
+                        # We already set created_by/last_modified_by in serializer context
                         serializer.save()
                         success_count += 1
                     else:
-                        # Format serializer errors for the error report
+                        # Format serializer errors (should be rare if manual checks are thorough)
                         formatted_errors = {}
                         for field, errors in serializer.errors.items():
                             formatted_errors[field] = errors[0] if isinstance(errors, list) else errors
@@ -462,11 +491,12 @@ class InventoryUploadView(APIView):
                         })
 
                 except Exception as e:
+                    # Catch unexpected errors during save
                     error_rows.append({
                         'row': row_num,
-                        'errors': {'detail': str(e)}
+                        'errors': {'detail': f'Unexpected error during save: {str(e)}'}
                     })
-            
+
             # Return the results
             return Response({
                 'success': True,
@@ -474,14 +504,18 @@ class InventoryUploadView(APIView):
                     'total_rows': len(df),
                     'success_count': success_count,
                     'error_count': len(error_rows),
-                    'errors': error_rows[:10]  # Return only the first 10 errors to avoid overwhelming the response
+                    # Limit errors in response if needed, e.g., errors=error_rows[:50]
+                    'errors': error_rows
                 }
             })
-            
+
+        except pd.errors.EmptyDataError:
+             return Response({'success': False, 'errors': {'file': 'The uploaded file is empty or could not be read.'}}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            # Catch errors during file reading, column mapping etc.
             return Response({
                 'success': False,
-                'errors': {'detail': str(e)}
+                'errors': {'detail': f'Error processing file: {str(e)}'}
             }, status=status.HTTP_400_BAD_REQUEST)
 
 class InventoryGeneralView(APIView):

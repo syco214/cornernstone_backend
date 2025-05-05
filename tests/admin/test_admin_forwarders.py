@@ -53,8 +53,8 @@ class ForwarderViewTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.list_url = reverse('forwarders')
-        self.detail_url = reverse('forwarder-detail', args=[self.forwarder1.id])
+        self.list_url = reverse('admin_api:forwarders')
+        self.detail_url = reverse('admin_api:forwarder-detail', args=[self.forwarder1.id])
     
     def test_get_forwarder_list(self):
         """Test retrieving a list of forwarders."""

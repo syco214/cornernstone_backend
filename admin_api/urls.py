@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView, BrokerView, ForwarderView, InventoryView, InventoryGeneralView, InventoryDescriptionView, CategoryChildrenView, InventoryTemplateView, InventoryUploadView
-
+app_name = 'admin_api'
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('sidebar/', SidebarView.as_view(), name='sidebar'),

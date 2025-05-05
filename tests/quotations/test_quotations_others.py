@@ -36,8 +36,8 @@ class OtherViewTests(APITestCase):
         )
         
         # URLs - using the correct URL names from urls.py
-        self.list_url = reverse('other-list-create')
-        self.detail_url = reverse('other-detail', kwargs={'pk': self.other1.pk})
+        self.list_url = reverse('quotations_api:other-list-create')
+        self.detail_url = reverse('quotations_api:other-detail', kwargs={'pk': self.other1.pk})
         
         # Authenticate
         self.client.force_authenticate(user=self.user)
@@ -93,7 +93,7 @@ class OtherViewTests(APITestCase):
             Other.objects.get(pk=self.other1.pk)
 
     def test_delete_nonexistent_other(self):
-        url = reverse('other-detail', kwargs={'pk': 999})  # Non-existent ID
+        url = reverse('quotations_api:other-detail', kwargs={'pk': 999})  # Non-existent ID
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

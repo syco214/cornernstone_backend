@@ -4,7 +4,7 @@ from .views import (
     CustomerContactListView, QuotationPDFView, QuotationItemsTemplateView, 
     QuotationItemsUploadView, QuotationStatusView, LastQuotedPriceView
 )
-
+app_name = 'quotations_api'
 urlpatterns = [
     path('', QuotationView.as_view(), name='quotation-list'),
     path('<int:pk>/', QuotationView.as_view(), name='quotation-detail'),

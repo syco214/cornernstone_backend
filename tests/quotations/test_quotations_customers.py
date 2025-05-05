@@ -70,7 +70,7 @@ class CustomerListViewTests(APITestCase):
         )
         
         # URL for the customer list endpoint
-        self.url = reverse('customer-list')
+        self.url = reverse('quotations_api:customer-list')
         
         # Authenticate
         self.client.force_authenticate(user=self.user)

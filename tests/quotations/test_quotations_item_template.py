@@ -102,8 +102,8 @@ class QuotationItemTemplateTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.download_template_url = reverse('quotation-download-template', args=[self.quotation.id])
-        self.upload_items_url = reverse('quotation-upload-items', args=[self.quotation.id])
+        self.download_template_url = reverse('quotations_api:quotation-download-template', args=[self.quotation.id])
+        self.upload_items_url = reverse('quotations_api:quotation-upload-items', args=[self.quotation.id])
     
     def test_download_template(self):
         """Test downloading the quotation items template."""

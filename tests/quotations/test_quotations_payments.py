@@ -36,8 +36,8 @@ class PaymentViewTests(APITestCase):
         )
         
         # URLs - using the correct URL names from urls.py
-        self.list_url = reverse('payment-list-create')
-        self.detail_url = reverse('payment-detail', kwargs={'pk': self.payment1.pk})
+        self.list_url = reverse('quotations_api:payment-list-create')
+        self.detail_url = reverse('quotations_api:payment-detail', kwargs={'pk': self.payment1.pk})
         
         # Authenticate
         self.client.force_authenticate(user=self.user)
@@ -93,7 +93,7 @@ class PaymentViewTests(APITestCase):
             Payment.objects.get(pk=self.payment1.pk)
 
     def test_delete_nonexistent_payment(self):
-        url = reverse('payment-detail', kwargs={'pk': 999})  # Non-existent ID
+        url = reverse('quotations_api:payment-detail', kwargs={'pk': 999})  # Non-existent ID
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

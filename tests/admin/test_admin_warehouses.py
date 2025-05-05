@@ -55,8 +55,8 @@ class WarehouseTests(APITestCase):
         )
         
         # URLs
-        self.warehouses_url = reverse('warehouses')
-        self.warehouse_detail_url = lambda pk: reverse('warehouse-detail', kwargs={'pk': pk})
+        self.warehouses_url = reverse('admin_api:warehouses')
+        self.warehouse_detail_url = lambda pk: reverse('admin_api:warehouse-detail', kwargs={'pk': pk})
     
     def test_get_warehouses_list(self):
         """

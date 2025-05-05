@@ -100,7 +100,7 @@ class QuotationStatusViewTests(APITestCase):
         )
         
         # URL for the status update endpoint
-        self.url = reverse('quotation-status-update', kwargs={'pk': self.quotation.pk})
+        self.url = reverse('quotations_api:quotation-status-update', kwargs={'pk': self.quotation.pk})
     
     def test_update_status_draft_to_for_approval(self):
         """Test updating status from draft to for_approval by regular user"""
@@ -251,7 +251,7 @@ class QuotationStatusViewTests(APITestCase):
         """Test updating status for a non-existent quotation"""
         self.client.force_authenticate(user=self.regular_user)
         
-        url = reverse('quotation-status-update', kwargs={'pk': 9999})  # Non-existent ID
+        url = reverse('quotations_api:quotation-status-update', kwargs={'pk': 9999})  # Non-existent ID
         data = {'status': 'for_approval'}
         response = self.client.post(url, data, format='json')
         

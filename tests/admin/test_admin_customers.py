@@ -87,8 +87,8 @@ class CustomerViewTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.list_url = reverse('customers')
-        self.detail_url = reverse('customer-detail', args=[self.customer1.id])
+        self.list_url = reverse('admin_api:customers')
+        self.detail_url = reverse('admin_api:customer-detail', args=[self.customer1.id])
     
     def test_get_customer_list(self):
         """Test retrieving a list of customers."""

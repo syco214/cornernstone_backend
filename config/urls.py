@@ -21,7 +21,7 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('django-admin/', admin.site.urls),
-    path('api/admin/', include('admin_api.urls')),
-    path('api/quotations/', include('quotations_api.urls')),
-    path('api/inventory/', include('inventory_api.urls')),
+    path('api/admin/', include('admin_api.urls', namespace='admin_api')),
+    path('api/quotations/', include('quotations_api.urls', namespace='quotations_api')),
+    path('api/inventory/', include('inventory_api.urls', namespace='inventory_api')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

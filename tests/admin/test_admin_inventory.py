@@ -119,11 +119,20 @@ class InventoryTests(TestCase):
             'wholesale_price': '120.00',
             'remarks': 'Test remarks'
         }
+        
+        # Define URLs using the 'admin_api' namespace within setUp or where needed
+        self.list_url = reverse('admin_api:inventory-list')
+        self.detail_url = lambda pk: reverse('admin_api:inventory-detail', args=[pk])
+        self.general_create_url = reverse('admin_api:inventory-general-create')
+        self.general_update_url = lambda pk: reverse('admin_api:inventory-general-update', args=[pk])
+        self.description_update_url = lambda pk: reverse('admin_api:inventory-description-update', args=[pk])
+        self.download_template_url = reverse('admin_api:inventory-download-template')
+        self.upload_url = reverse('admin_api:inventory-upload')
+        # Note: The supplier list URL likely only exists in inventory_api, not admin_api
     
     def test_get_inventory_list(self):
         """Test retrieving a list of inventory items."""
-        url = reverse('inventory-list')
-        response = self.client.get(url)
+        response = self.client.get(self.list_url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -132,7 +141,7 @@ class InventoryTests(TestCase):
     
     def test_get_inventory_detail(self):
         """Test retrieving a single inventory item."""
-        url = reverse('inventory-detail', args=[self.inventory.id])
+        url = self.detail_url(self.inventory.id)
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -147,7 +156,7 @@ class InventoryTests(TestCase):
     
     def test_create_inventory_general(self):
         """Test creating a new inventory item with general information."""
-        url = reverse('inventory-general-create')
+        url = self.general_create_url
         response = self.client.post(url, self.general_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -161,7 +170,7 @@ class InventoryTests(TestCase):
     
     def test_update_inventory_general(self):
         """Test updating general information of an existing inventory item."""
-        url = reverse('inventory-general-update', args=[self.inventory.id])
+        url = self.general_update_url(self.inventory.id)
         update_data = {
             'product_name': 'Updated Product Name',
             'status': 'inactive'
@@ -181,7 +190,7 @@ class InventoryTests(TestCase):
     
     def test_update_inventory_description(self):
         """Test updating description information of an existing inventory item."""
-        url = reverse('inventory-description-update', args=[self.inventory.id])
+        url = self.description_update_url(self.inventory.id)
         
         # Create test image file
         image = SimpleUploadedFile(
@@ -231,7 +240,7 @@ class InventoryTests(TestCase):
     
     def test_delete_inventory(self):
         """Test deleting an inventory item."""
-        url = reverse('inventory-detail', args=[self.inventory.id])
+        url = self.detail_url(self.inventory.id)
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -257,8 +266,7 @@ class InventoryTests(TestCase):
             last_modified_by=self.user
         )
         
-        url = reverse('inventory-list')
-        response = self.client.get(url, {'search': 'search'})
+        response = self.client.get(self.list_url, {'search': 'search'})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -282,8 +290,7 @@ class InventoryTests(TestCase):
             last_modified_by=self.user
         )
         
-        url = reverse('inventory-list')
-        response = self.client.get(url, {'status': 'inactive'})
+        response = self.client.get(self.list_url, {'status': 'inactive'})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -321,8 +328,7 @@ class InventoryTests(TestCase):
         )
         
         # Filter by the original supplier
-        url = reverse('inventory-list') + f'?supplier_id={self.supplier.id}'
-        response = self.client.get(url)
+        response = self.client.get(self.list_url + f'?supplier_id={self.supplier.id}')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -357,8 +363,7 @@ class InventoryTests(TestCase):
         )
         
         # Filter by the original brand
-        url = reverse('inventory-list') + f'?brand_id={self.brand.id}'
-        response = self.client.get(url)
+        response = self.client.get(self.list_url + f'?brand_id={self.brand.id}')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -395,8 +400,7 @@ class InventoryTests(TestCase):
         )
         
         # Filter by the original category
-        url = reverse('inventory-list') + f'?category_id={self.category.id}'
-        response = self.client.get(url)
+        response = self.client.get(self.list_url + f'?category_id={self.category.id}')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -417,7 +421,7 @@ class InventoryTests(TestCase):
         )
         
         # Try to create an inventory with mismatched category hierarchy
-        url = reverse('inventory-general-create')
+        url = self.general_create_url
         data = {
             'item_code': 'TEST005',
             'cip_code': 'CIP005',
@@ -439,8 +443,7 @@ class InventoryTests(TestCase):
     
     def test_download_template(self):
         """Test downloading the inventory template."""
-        url = reverse('inventory-download-template')
-        response = self.client.get(url)
+        response = self.client.get(self.download_template_url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
@@ -464,7 +467,7 @@ class InventoryTests(TestCase):
     
     def test_upload_inventory(self):
         """Test uploading inventory data."""
-        url = reverse('inventory-upload')
+        url = self.upload_url
         
         # Create a test Excel file
         wb = openpyxl.Workbook()
@@ -516,7 +519,7 @@ class InventoryTests(TestCase):
     
     def test_upload_inventory_validation_errors(self):
         """Test validation errors when uploading inventory data."""
-        url = reverse('inventory-upload')
+        url = self.upload_url
         
         # Create a test Excel file with invalid data
         wb = openpyxl.Workbook()
@@ -573,7 +576,7 @@ class InventoryTests(TestCase):
     
     def test_upload_inventory_duplicate_item_code(self):
         """Test uploading inventory with duplicate item code."""
-        url = reverse('inventory-upload')
+        url = self.upload_url
         
         # Create a test Excel file with duplicate item code
         wb = openpyxl.Workbook()

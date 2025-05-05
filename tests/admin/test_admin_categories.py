@@ -14,7 +14,7 @@ class CategoryViewTests(TestCase):
     def setUp(self):
         """Set up test data and authentication"""
         self.client = APIClient()
-        self.categories_url = reverse('categories')
+        self.categories_url = reverse('admin_api:categories')
         
         # Create admin user
         self.admin_user = User.objects.create_user(
@@ -67,7 +67,7 @@ class CategoryViewTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.admin_token}')
         
         # Category detail URL
-        self.category_detail_url = reverse('category-detail', args=[self.root_category1.id])
+        self.category_detail_url = reverse('admin_api:category-detail', args=[self.root_category1.id])
         
         # New category data for creation tests
         self.new_category_data = {
@@ -155,7 +155,7 @@ class CategoryViewTests(TestCase):
 
     def test_get_child_category_details(self):
         """Test retrieving a child category with level and full path"""
-        child_url = reverse('category-detail', args=[self.child_category1.id])
+        child_url = reverse('admin_api:category-detail', args=[self.child_category1.id])
         response = self.client.get(child_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -227,7 +227,7 @@ class CategoryViewTests(TestCase):
         update_parent_data = {
             'parent': self.root_category2.id
         }
-        child_url = reverse('category-detail', args=[self.child_category2.id])
+        child_url = reverse('admin_api:category-detail', args=[self.child_category2.id])
         response = self.client.put(child_url, update_parent_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
@@ -240,7 +240,7 @@ class CategoryViewTests(TestCase):
     def test_get_category_children(self):
         """Test retrieving children of a specific category using the dedicated endpoint"""
         # URL for the children endpoint
-        children_url = reverse('category-children', args=[self.root_category1.id])
+        children_url = reverse('admin_api:category-children', args=[self.root_category1.id])
         
         # Get children of root_category1
         response = self.client.get(children_url)
@@ -256,7 +256,7 @@ class CategoryViewTests(TestCase):
         self.assertIn('Child Category 2', child_names)
         
         # Test with a category that has no children
-        no_children_url = reverse('category-children', args=[self.grandchild_category.id])
+        no_children_url = reverse('admin_api:category-children', args=[self.grandchild_category.id])
         response = self.client.get(no_children_url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -264,7 +264,7 @@ class CategoryViewTests(TestCase):
         self.assertEqual(len(response.data['data']), 0)  # No children
         
         # Test with a non-existent category ID
-        non_existent_url = reverse('category-children', args=[9999])  # Assuming 9999 doesn't exist
+        non_existent_url = reverse('admin_api:category-children', args=[9999])  # Assuming 9999 doesn't exist
         response = self.client.get(non_existent_url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)

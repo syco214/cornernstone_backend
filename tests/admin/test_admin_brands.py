@@ -14,7 +14,7 @@ class BrandViewTests(TestCase):
     def setUp(self):
         """Set up test data and authentication"""
         self.client = APIClient()
-        self.brands_url = reverse('brands')
+        self.brands_url = reverse('admin_api:brands')
         
         # Create admin user
         self.admin_user = User.objects.create_user(
@@ -58,7 +58,7 @@ class BrandViewTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.admin_token}')
         
         # Brand detail URL
-        self.brand_detail_url = reverse('brand-detail', args=[self.brand1.id])
+        self.brand_detail_url = reverse('admin_api:brand-detail', args=[self.brand1.id])
         
         # New brand data for creation tests
         self.new_brand_data = {

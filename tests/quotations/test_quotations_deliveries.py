@@ -37,8 +37,8 @@ class DeliveryViewTests(APITestCase):
         )
         
         # URLs - using the correct URL names from urls.py
-        self.list_url = reverse('delivery-list-create')
-        self.detail_url = reverse('delivery-detail', kwargs={'pk': self.delivery1.pk})
+        self.list_url = reverse('quotations_api:delivery-list-create')
+        self.detail_url = reverse('quotations_api:delivery-detail', kwargs={'pk': self.delivery1.pk})
         
         # Authenticate
         self.client.force_authenticate(user=self.user)
@@ -94,7 +94,7 @@ class DeliveryViewTests(APITestCase):
             Delivery.objects.get(pk=self.delivery1.pk)
 
     def test_delete_nonexistent_delivery(self):
-        url = reverse('delivery-detail', kwargs={'pk': 999})  # Non-existent ID
+        url = reverse('quotations_api:delivery-detail', kwargs={'pk': 999})  # Non-existent ID
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

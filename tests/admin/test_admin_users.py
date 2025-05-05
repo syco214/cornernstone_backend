@@ -10,7 +10,7 @@ User = get_user_model()
 class UserViewTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.users_url = reverse('users')
+        self.users_url = reverse('admin_api:users')
         
         # Create admin user
         self.admin_user = User.objects.create_user(
@@ -53,7 +53,7 @@ class UserViewTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.admin_token}')
         
         # User detail URL
-        self.user_detail_url = reverse('user-detail', args=[self.user1.id])
+        self.user_detail_url = reverse('admin_api:user-detail', args=[self.user1.id])
         
         # New user data for creation tests
         self.new_user_data = {
@@ -116,7 +116,7 @@ class UserViewTests(TestCase):
 
     def test_get_supervisor_with_admin_access(self):
         """Test retrieving a supervisor user with admin_access"""
-        supervisor_url = reverse('user-detail', args=[self.user2.id])
+        supervisor_url = reverse('admin_api:user-detail', args=[self.user2.id])
         response = self.client.get(supervisor_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])

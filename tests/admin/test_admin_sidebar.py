@@ -53,7 +53,7 @@ class SidebarTests(TestCase):
         )
         
         self.client = APIClient()
-        self.url = reverse('sidebar')
+        self.url = reverse('admin_api:sidebar')
 
     def test_sidebar_admin_user(self):
         """Test that admin users can access the sidebar data with admin_access field"""

@@ -89,8 +89,8 @@ class SupplierViewTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.list_url = reverse('suppliers')
-        self.detail_url = lambda pk: reverse('supplier-detail', args=[pk])
+        self.list_url = reverse('admin_api:suppliers')
+        self.detail_url = lambda pk: reverse('admin_api:supplier-detail', args=[pk])
     
     def test_get_suppliers_list(self):
         """Test retrieving a list of suppliers."""

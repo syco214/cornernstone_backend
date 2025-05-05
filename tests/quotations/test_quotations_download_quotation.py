@@ -59,7 +59,7 @@ class QuotationPDFViewTests(APITestCase):
         )
         
         # URL for the PDF endpoint
-        self.url = reverse('quotation-pdf', kwargs={'pk': self.quotation.pk})
+        self.url = reverse('quotations_api:quotation-pdf', kwargs={'pk': self.quotation.pk})
         
         # Authenticate
         self.client.force_authenticate(user=self.user)
@@ -104,7 +104,7 @@ class QuotationPDFViewTests(APITestCase):
     
     def test_get_nonexistent_quotation(self):
         """Test attempting to get PDF for a non-existent quotation"""
-        url = reverse('quotation-pdf', kwargs={'pk': 9999})  # Non-existent ID
+        url = reverse('quotations_api:quotation-pdf', kwargs={'pk': 9999})  # Non-existent ID
         response = self.client.get(url)
         
         # The view is returning 500 instead of 404 for non-existent quotations
@@ -142,7 +142,7 @@ class QuotationPDFViewTests(APITestCase):
         )
         
         # Get the URL for this quotation
-        url = reverse('quotation-pdf', kwargs={'pk': special_quotation.pk})
+        url = reverse('quotations_api:quotation-pdf', kwargs={'pk': special_quotation.pk})
         
         # Make the request
         response = self.client.get(url)

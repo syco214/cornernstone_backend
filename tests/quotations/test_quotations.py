@@ -133,8 +133,8 @@ class QuotationAPITests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.list_url = reverse('quotation-list')
-        self.detail_url = reverse('quotation-detail', args=[self.quotation.id])
+        self.list_url = reverse('quotations_api:quotation-list')
+        self.detail_url = reverse('quotations_api:quotation-detail', args=[self.quotation.id])
     
     def test_get_quotation_list(self):
         """Test retrieving a list of quotations."""
@@ -179,7 +179,7 @@ class QuotationAPITests(TestCase):
         
         # Create request with data in the 'data' field
         response = self.client.post(
-            reverse('quotation-list'),
+            reverse('quotations_api:quotation-list'),
             {'data': json_data},
             format='multipart'
         )
@@ -257,7 +257,7 @@ class QuotationAPITests(TestCase):
         
         # Test search by customer name
         response = self.client.get(
-            reverse('quotation-list'),
+            reverse('quotations_api:quotation-list'),
             {'customer': 'Test'},
             format='json'
         )
@@ -368,7 +368,7 @@ class QuotationItemTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.detail_url = reverse('quotation-detail', args=[self.quotation.id])
+        self.detail_url = reverse('quotations_api:quotation-detail', args=[self.quotation.id])
     
     def test_add_quotation_item(self):
         """Test adding an item to a quotation."""
@@ -593,7 +593,7 @@ class QuotationTermsAndConditionsTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.detail_url = reverse('quotation-detail', args=[self.quotation.id])
+        self.detail_url = reverse('quotations_api:quotation-detail', args=[self.quotation.id])
     
     def test_add_terms_and_conditions(self):
         """Test adding terms and conditions to a quotation."""
@@ -714,7 +714,7 @@ class QuotationAttachmentTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.detail_url = reverse('quotation-detail', args=[self.quotation.id])
+        self.detail_url = reverse('quotations_api:quotation-detail', args=[self.quotation.id])
     
     def test_add_attachment(self):
         """Test adding an attachment to a quotation."""
@@ -827,7 +827,7 @@ class QuotationSalesAgentTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.detail_url = reverse('quotation-detail', args=[self.quotation.id])
+        self.detail_url = reverse('quotations_api:quotation-detail', args=[self.quotation.id])
     
     def test_add_sales_agents(self):
         """Test adding sales agents to a quotation."""
@@ -1013,7 +1013,7 @@ class QuotationAdditionalControlsTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.detail_url = reverse('quotation-detail', args=[self.quotation.id])
+        self.detail_url = reverse('quotations_api:quotation-detail', args=[self.quotation.id])
     
     def test_add_additional_controls(self):
         """Test adding additional controls to a quotation."""
@@ -1150,7 +1150,7 @@ class QuotationContactTests(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # URLs
-        self.detail_url = reverse('quotation-detail', args=[self.quotation.id])
+        self.detail_url = reverse('quotations_api:quotation-detail', args=[self.quotation.id])
     
     def test_add_contacts(self):
         """Test adding contacts to a quotation."""
