@@ -525,6 +525,7 @@ class Inventory(models.Model):
     volume = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     volume_unit = models.CharField(max_length=20, blank=True)
     materials = models.TextField(blank=True)
+    pattern = models.TextField(blank=True)
     photo = models.ImageField(upload_to='inventory_photos/', null=True, blank=True)
     list_price_currency = models.CharField(max_length=3, blank=True)
     list_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

@@ -123,6 +123,7 @@ class InventoryAPITests(APITestCase):
             'volume': '3000.0',
             'volume_unit': 'm³',
             'materials': 'Fabric',
+            'pattern': 'Pattern 1',
             'list_price_currency': 'PHP',
             'list_price': '75.00',
             'wholesale_price': '60.00',

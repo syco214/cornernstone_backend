@@ -1529,7 +1529,7 @@ class InventoryTemplateView(APIView):
             'Unit', 'Landed Cost Price', 'Landed Cost Unit', 'Packaging Amount',
             'Packaging Units', 'Packaging Package', 'External Description',
             'Length', 'Length Unit', 'Color', 'Width', 'Width Unit',
-            'Height', 'Height Unit', 'Volume', 'Volume Unit', 'Materials',
+            'Height', 'Height Unit', 'Volume', 'Volume Unit', 'Materials', 'Pattern',
             'List Price Currency', 'List Price', 'Wholesale Price', 'Remarks'
         ]
         
@@ -1638,6 +1638,7 @@ class InventoryUploadView(APIView):
                 'Volume': 'volume',
                 'Volume Unit': 'volume_unit',
                 'Materials': 'materials',
+                'Pattern': 'pattern',
                 'List Price Currency': 'list_price_currency',
                 'List Price': 'list_price',
                 'Wholesale Price': 'wholesale_price',
@@ -1790,7 +1791,7 @@ class InventoryUploadView(APIView):
                         'unit', 'landed_cost_price', 'landed_cost_unit', 'packaging_amount',
                         'packaging_units', 'packaging_package', 'external_description', 'length',
                         'length_unit', 'color', 'width', 'width_unit', 'height', 'height_unit',
-                        'volume', 'volume_unit', 'materials', 'list_price_currency',
+                        'volume', 'volume_unit', 'materials', 'pattern', 'list_price_currency',
                         'list_price', 'wholesale_price', 'remarks'
                     ]
                     has_description = any(row_data.get(field) for field in description_fields)
@@ -1934,7 +1935,7 @@ class InventoryDescriptionView(APIView):
             'packaging_amount', 'packaging_units', 'packaging_package',
             'external_description', 'length', 'length_unit', 'color',
             'width', 'width_unit', 'height', 'height_unit',
-            'volume', 'volume_unit', 'materials', 'photo',
+            'volume', 'volume_unit', 'materials', 'pattern', 'photo',
             'list_price_currency', 'list_price', 'wholesale_price', 'remarks'
         ]
         

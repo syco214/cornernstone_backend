@@ -844,7 +844,7 @@ class InventorySerializer(serializers.ModelSerializer):
             'packaging_amount', 'packaging_units', 'packaging_package',
             'external_description', 'length', 'length_unit',
             'color', 'width', 'width_unit', 'height', 'height_unit',
-            'volume', 'volume_unit', 'materials', 'photo', 'photo_url',
+            'volume', 'volume_unit', 'materials', 'pattern', 'photo', 'photo_url',
             'list_price_currency', 'list_price', 'wholesale_price', 'remarks',
             'stock_on_hand', 'reserved_pending_so', 'available_for_sale',
             'incoming_pending_po', 'incoming_stock', 'total_expected'
@@ -933,7 +933,7 @@ class InventorySerializer(serializers.ModelSerializer):
             'unit', 'landed_cost_price', 'landed_cost_unit', 'packaging_amount', 
             'packaging_units', 'packaging_package', 'external_description', 'length', 
             'length_unit', 'color', 'width', 'width_unit', 'height', 'height_unit',
-            'volume', 'volume_unit', 'materials', 'photo', 'list_price_currency',
+            'volume', 'volume_unit', 'materials', 'pattern', 'photo', 'list_price_currency',
             'list_price', 'wholesale_price', 'remarks'
         ]
         if any(field in validated_data for field in description_fields):
