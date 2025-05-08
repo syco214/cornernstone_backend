@@ -67,13 +67,18 @@ class InventoryView(APIView, PageNumberPagination):
         cip_code_search = request.query_params.get('cip_code', '')
         product_name_search = request.query_params.get('product_name', '')
         brand_search = request.query_params.get('brand', '')
+        external_description_search = request.query_params.get('external_description', '')
+        color_search = request.query_params.get('color', '')
+        materials_search = request.query_params.get('materials', '')
+        pattern_search = request.query_params.get('pattern', '')
         
         # Get other filter parameters
         status_filter = request.query_params.get('status', '')
-        supplier_id = request.query_params.get('supplier_id', '')
-        brand_id = request.query_params.get('brand_id', '')
-        category_id = request.query_params.get('category_id', '')
-        
+        supplier_name = request.query_params.get('supplier', '')
+        brand_name = request.query_params.get('brand', '')
+        category_name = request.query_params.get('category', '')
+        product_tagging_filter = request.query_params.get('product_tagging', '')
+
         # Get general search parameter
         general_search = request.query_params.get('search', '')
         
@@ -96,43 +101,55 @@ class InventoryView(APIView, PageNumberPagination):
         
         if brand_search:
             inventory_items = inventory_items.filter(brand__name__icontains=brand_search)
+            
+        if external_description_search:
+            inventory_items = inventory_items.filter(external_description__icontains=external_description_search)
+            
+        if color_search:
+            inventory_items = inventory_items.filter(color__icontains=color_search)
+            
+        if materials_search:
+            inventory_items = inventory_items.filter(materials__icontains=materials_search)
+            
+        if pattern_search:
+            inventory_items = inventory_items.filter(pattern__icontains=pattern_search)
         
         # Apply other filters
         if status_filter and status_filter in dict(Inventory.STATUS_CHOICES):
             inventory_items = inventory_items.filter(status=status_filter)
             
-        if supplier_id:
-            try:
-                supplier_id = int(supplier_id)
-                inventory_items = inventory_items.filter(supplier_id=supplier_id)
-            except ValueError:
-                pass
+        if product_tagging_filter and product_tagging_filter in dict(Inventory.PRODUCT_TAGGING_CHOICES):
+            inventory_items = inventory_items.filter(product_tagging=product_tagging_filter)
+            
+        if supplier_name:
+            inventory_items = inventory_items.filter(supplier__name__icontains=supplier_name)
                 
-        if brand_id:
-            try:
-                brand_id = int(brand_id)
-                inventory_items = inventory_items.filter(brand_id=brand_id)
-            except ValueError:
-                pass
+        if brand_name:
+            inventory_items = inventory_items.filter(brand__name__icontains=brand_name)
                 
-        if category_id:
-            try:
-                category_id = int(category_id)
-                inventory_items = inventory_items.filter(
-                    Q(category_id=category_id) |
-                    Q(subcategory_id=category_id) |
-                    Q(sub_level_category_id=category_id)
-                )
-            except ValueError:
-                pass
+        if category_name:
+            inventory_items = inventory_items.filter(
+                Q(category__name__icontains=category_name) |
+                Q(subcategory__name__icontains=category_name) |
+                Q(sub_level_category__name__icontains=category_name)
+            )
 
-        # Apply general search filter if no specific filters are provided
-        if general_search and not any([item_code_search, cip_code_search, product_name_search, brand_search, 
-                                      status_filter, supplier_id, brand_id, category_id]):
+        # Apply general search filter across all searchable fields
+        if general_search:
             inventory_items = inventory_items.filter(
                 Q(item_code__icontains=general_search) |
                 Q(cip_code__icontains=general_search) |
                 Q(product_name__icontains=general_search) |
+                Q(brand__name__icontains=general_search) |
+                Q(supplier__name__icontains=general_search) |
+                Q(category__name__icontains=general_search) |
+                Q(subcategory__name__icontains=general_search) |
+                Q(sub_level_category__name__icontains=general_search) |
+                Q(external_description__icontains=general_search) |
+                Q(color__icontains=general_search) |
+                Q(materials__icontains=general_search) |
+                Q(pattern__icontains=general_search) |
+                Q(status__icontains=general_search) |
                 Q(product_tagging__icontains=general_search)
             )
 
