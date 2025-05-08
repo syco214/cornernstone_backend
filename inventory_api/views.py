@@ -164,14 +164,6 @@ class InventoryView(APIView, PageNumberPagination):
             'success': True,
             'data': serializer.data
         })
-    
-    def delete(self, request, pk):
-        inventory = get_object_or_404(Inventory, pk=pk)
-        inventory.delete()
-        return Response({
-            'success': True,
-            'data': None
-        }, status=status.HTTP_200_OK)
 
 class InventoryTemplateView(APIView):
     permission_classes = [IsAuthenticated]
