@@ -329,13 +329,13 @@ class InventoryTests(TestCase):
             last_modified_by=self.user
         )
         
-        # Filter by the original supplier
-        response = self.client.get(self.list_url + f'?supplier_id={self.supplier.id}')
+        # Filter by the original supplier name instead of ID
+        response = self.client.get(self.list_url, {'supplier': 'Test Supplier'})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
         self.assertEqual(len(response.data['data']), 1)
-        self.assertEqual(response.data['data'][0]['item_code'], 'TEST001')
+        self.assertEqual(response.data['data'][0]['supplier_name'], 'Test Supplier')
     
     def test_filter_inventory_by_brand(self):
         """Test filtering inventory items by brand."""
@@ -364,13 +364,13 @@ class InventoryTests(TestCase):
             last_modified_by=self.user
         )
         
-        # Filter by the original brand
-        response = self.client.get(self.list_url + f'?brand_id={self.brand.id}')
+        # Filter by the original brand name instead of ID
+        response = self.client.get(self.list_url, {'brand': 'Test Brand'})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
         self.assertEqual(len(response.data['data']), 1)
-        self.assertEqual(response.data['data'][0]['item_code'], 'TEST001')
+        self.assertEqual(response.data['data'][0]['brand_name'], 'Test Brand')
     
     def test_filter_inventory_by_category(self):
         """Test filtering inventory items by category."""
@@ -401,13 +401,13 @@ class InventoryTests(TestCase):
             last_modified_by=self.user
         )
         
-        # Filter by the original category
-        response = self.client.get(self.list_url + f'?category_id={self.category.id}')
+        # Filter by the original category name instead of ID
+        response = self.client.get(self.list_url, {'category': 'Electronics'})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
         self.assertEqual(len(response.data['data']), 1)
-        self.assertEqual(response.data['data'][0]['item_code'], 'TEST001')
+        self.assertEqual(response.data['data'][0]['category_name'], 'Electronics')
     
     def test_validation_category_hierarchy(self):
         """Test validation of category hierarchy."""
