@@ -278,7 +278,7 @@ class ParentCompanyPaymentTerm(models.Model):
         related_name='payment_term'
     )
     name = models.CharField(max_length=100)
-    credit_limit = models.DecimalField(max_digits=12, decimal_places=2)
+    credit_limit = models.DecimalField(max_digits=15, decimal_places=2)
     stock_payment_terms = models.CharField(max_length=100)
     stock_dp_percentage = models.DecimalField(max_digits=5, decimal_places=2)
     stock_terms_days = models.PositiveIntegerField()
