@@ -177,7 +177,7 @@ class SupplierAddressSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = SupplierAddress
-        fields = ['id', 'description', 'address']
+        fields = ['id', 'description', 'address', 'country']
         read_only_fields = ['id']
 
 class SupplierContactSerializer(serializers.ModelSerializer):

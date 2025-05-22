@@ -193,6 +193,7 @@ class Supplier(models.Model):
 class SupplierAddress(models.Model):
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='addresses')
     description = models.CharField(max_length=100)  # e.g., "Headquarters", "Warehouse", etc.
+    country = models.TextField()
     address = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
