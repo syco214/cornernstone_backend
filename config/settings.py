@@ -41,7 +41,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'admin_api.apps.AdminApiConfig',    
     'quotations_api.apps.QuotationsApiConfig',
-    'inventory_api.apps.InventoryApiConfig'
+    'inventory_api.apps.InventoryApiConfig',
+    'purchase_order_api.apps.PurchaseOrderApiConfig',
 ]
 
 MIDDLEWARE = [

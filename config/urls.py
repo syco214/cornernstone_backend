@@ -24,4 +24,5 @@ urlpatterns = [
     path('api/admin/', include('admin_api.urls', namespace='admin_api')),
     path('api/quotations/', include('quotations_api.urls', namespace='quotations_api')),
     path('api/inventory/', include('inventory_api.urls', namespace='inventory_api')),
+    path('api/purchase-orders/', include('purchase_order_api.urls', namespace='purchase_order_api')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

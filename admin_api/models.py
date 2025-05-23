@@ -34,6 +34,7 @@ USER_ACCESS_OPTIONS = [
     'warehouse_audit',
     'shipments',
     'calendar',
+    'purchase_orders',
 ]
 
 # Define role options as simple constants
