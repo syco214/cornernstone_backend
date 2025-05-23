@@ -194,12 +194,6 @@ class PurchaseOrderCreateUpdateSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data: dict) -> PurchaseOrder:
         items_data = validated_data.pop('items', [])
-        print(f"Items data before processing: {items_data}")
-        
-        for item in items_data:
-            print(f"Item inventory type: {type(item.get('inventory'))}")
-            print(f"Item inventory value: {item.get('inventory')}")
-        
         discounts_charges_data = validated_data.pop('discounts_charges', [])
         payment_term_data = validated_data.pop('payment_term', None)
         
@@ -213,22 +207,15 @@ class PurchaseOrderCreateUpdateSerializer(serializers.ModelSerializer):
 
         # Create nested items
         for item_data in items_data:
-            print(f"Processing item: {item_data}")
             item_data['purchase_order'] = purchase_order.pk  # Link item to PO
             
             # Ensure inventory is a primary key
             if isinstance(item_data.get('inventory'), Inventory):
-                print("Converting Inventory object to primary key")
                 item_data['inventory'] = item_data['inventory'].pk
             
             item_serializer = PurchaseOrderItemSerializer(data=item_data)
-            try:
-                if item_serializer.is_valid(raise_exception=True):
-                    item_serializer.save(purchase_order=purchase_order)  # Save with explicit PO
-            except Exception as e:
-                print(f"Error validating item: {e}")
-                print(f"Validation errors: {item_serializer.errors}")
-                raise
+            if item_serializer.is_valid(raise_exception=True):
+                item_serializer.save(purchase_order=purchase_order)  # Save with explicit PO
 
         # Create nested discounts/charges
         for dc_data in discounts_charges_data:
@@ -244,7 +231,7 @@ class PurchaseOrderCreateUpdateSerializer(serializers.ModelSerializer):
             if pt_serializer.is_valid(raise_exception=True):
                 pt_serializer.save(purchase_order=purchase_order)
         
-        purchase_order.update_totals(save_instance=True) # Now calculate and save totals
+        purchase_order.update_totals(save_instance=True)  # Now calculate and save totals
         return purchase_order
 
     @transaction.atomic
