@@ -145,6 +145,7 @@ class PurchaseOrderItem(models.Model):
     DISCOUNT_TYPE_CHOICES = [
         ('percentage', 'Percentage'),
         ('fixed', 'Fixed Amount'),
+        ('none', 'No Discount'),
     ]
 
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='items')

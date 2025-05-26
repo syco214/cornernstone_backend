@@ -27,12 +27,21 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         """
-        Override to handle inventory field properly.
+        Override to handle inventory field and set defaults properly.
         """
+        # Make a copy to avoid modifying the input
+        data = data.copy()
+        
         # If inventory is already an object, extract its ID
         if 'inventory' in data and not isinstance(data['inventory'], (int, str)):
-            data = data.copy()  # Make a copy to avoid modifying the input
             data['inventory'] = data['inventory'].id
+        
+        # Set default values
+        if 'discount_type' not in data or not data.get('discount_type'):
+            data['discount_type'] = 'none'
+        
+        if 'discount_value' not in data or data.get('discount_value') is None:
+            data['discount_value'] = 0
         
         return super().to_internal_value(data)
 
