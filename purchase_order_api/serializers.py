@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.db import transaction
 from .models import (
-    PurchaseOrder, PurchaseOrderItem, PurchaseOrderDiscountCharge, PurchaseOrderPaymentTerm)
+    PurchaseOrder, PurchaseOrderItem, PurchaseOrderDiscountCharge, PurchaseOrderPaymentTerm, PurchaseOrderRoute)
 from admin_api.models import Supplier, Inventory
 from django.contrib.auth import get_user_model
 User = get_user_model()
@@ -90,6 +90,18 @@ class PurchaseOrderPaymentTermSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'purchase_order', 'created_at', 'updated_at']
 
 
+class PurchaseOrderRouteSerializer(serializers.ModelSerializer):
+    completed_by_username = serializers.StringRelatedField(source='completed_by', read_only=True)
+    
+    class Meta:
+        model = PurchaseOrderRoute
+        fields = [
+            'id', 'purchase_order', 'step', 'is_completed', 'is_required',
+            'task', 'completed_at', 'completed_by', 'completed_by_username'
+        ]
+        read_only_fields = ['id', 'purchase_order', 'step', 'task', 'is_required']
+
+
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     """Serializer for GET requests (read-only detailed view)."""
     created_by_username = serializers.StringRelatedField(source='created_by', read_only=True)
@@ -100,6 +112,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True, read_only=True)
     discounts_charges = PurchaseOrderDiscountChargeSerializer(many=True, read_only=True)
     payment_term = PurchaseOrderPaymentTermSerializer(read_only=True)
+    route_steps = PurchaseOrderRouteSerializer(many=True, read_only=True)
 
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     currency_display = serializers.CharField(source='get_currency_display', read_only=True)
@@ -115,7 +128,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_username', 'last_modified_by', 'last_modified_by_username',
             'approved_by', 'approved_by_username', 'created_on', 'last_modified_on',
             'po_date', 'expected_delivery_date',
-            'items', 'discounts_charges', 'payment_term',
+            'items', 'discounts_charges', 'payment_term', 'route_steps',
         ]
         read_only_fields = fields # All fields are read-only for this serializer
 

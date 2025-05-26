@@ -270,3 +270,32 @@ class PurchaseOrderPaymentTerm(models.Model):
     def __str__(self) -> str:
         return f'Payment Terms for PO {self.purchase_order.po_number}'
 
+class PurchaseOrderRoute(models.Model):
+    """Model to track the workflow/route of a purchase order"""
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='route_steps')
+    step = models.PositiveIntegerField()  # Step number in the workflow
+    is_completed = models.BooleanField(default=False)
+    is_required = models.BooleanField(default=True)  # Is this step required before proceeding
+    task = models.TextField(blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='completed_po_steps'
+    )
+
+    class Meta:
+        ordering = ['purchase_order', 'step']
+        unique_together = ['purchase_order', 'step']
+
+    def __str__(self):
+        return f"Step {self.step} for PO {self.purchase_order.po_number}: {self.task}"
+
+    def complete(self, user=None):
+        """Mark this step as completed"""
+        self.is_completed = True
+        self.completed_at = timezone.now()
+        self.completed_by = user
+        self.save()

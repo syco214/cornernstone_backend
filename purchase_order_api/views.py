@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from .models import PurchaseOrder
 from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer
 from django.core.exceptions import FieldDoesNotExist
-
+from .po_workflows import POWorkflow
 class PurchaseOrderView(APIView, PageNumberPagination):
     permission_classes = [IsAuthenticated]
 
@@ -227,6 +227,146 @@ class PurchaseOrderView(APIView, PageNumberPagination):
             }, status=status.HTTP_200_OK) # Or HTTP_204_NO_CONTENT
         except Exception as e: # Catch potential errors during delete (e.g. ProtectedError)
              return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+class PurchaseOrderWorkflowView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk, action):
+        """Handle workflow actions for purchase orders"""
+        purchase_order = get_object_or_404(PurchaseOrder, pk=pk)
+        
+        if action == 'submit_for_approval':
+            return self.submit_for_approval(request, purchase_order)
+        elif action == 'approve':
+            return self.approve(request, purchase_order)
+        elif action == 'reject':
+            return self.reject(request, purchase_order)
+        elif action == 'complete_step':
+            return self.complete_step(request, purchase_order)
+        else:
+            return Response({
+                'success': False,
+                'errors': {'detail': f'Unknown action: {action}'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def submit_for_approval(self, request, purchase_order):
+        """Submit a purchase order for approval"""
+        # Check if the PO is in a valid state for submission
+        if purchase_order.status != 'draft':
+            return Response({
+                'success': False,
+                'errors': {'detail': f'Cannot submit PO in {purchase_order.get_status_display()} status. Only draft POs can be submitted.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            # Initialize workflow if not already initialized
+            if not purchase_order.route_steps.exists():
+                POWorkflow.initialize_workflow(purchase_order, request.user)
+                
+            # Submit the PO for approval
+            updated_po = POWorkflow.submit_for_approval(purchase_order, request.user)
+            
+            return Response({
+                'success': True,
+                'data': PurchaseOrderSerializer(updated_po).data,
+                'message': 'Purchase order submitted for approval successfully.'
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def approve(self, request, purchase_order):
+        """Approve a purchase order"""
+        # Check if the PO is in a valid state for approval
+        if purchase_order.status != 'pending_approval':
+            return Response({
+                'success': False,
+                'errors': {'detail': f'Cannot approve PO in {purchase_order.get_status_display()} status. Only pending approval POs can be approved.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            # Ensure workflow is initialized
+            if not purchase_order.route_steps.exists():
+                POWorkflow.initialize_workflow(purchase_order, request.user)
+                
+            # Approve the PO
+            updated_po = POWorkflow.approve_po(purchase_order, request.user)
+            
+            return Response({
+                'success': True,
+                'data': PurchaseOrderSerializer(updated_po).data,
+                'message': 'Purchase order approved successfully.'
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def reject(self, request, purchase_order):
+        """Reject a purchase order"""
+        # Check if the PO is in a valid state for rejection
+        if purchase_order.status != 'pending_approval':
+            return Response({
+                'success': False,
+                'errors': {'detail': f'Cannot reject PO in {purchase_order.get_status_display()} status. Only pending approval POs can be rejected.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            # Reject the PO
+            updated_po = POWorkflow.reject_po(purchase_order, request.user)
+            
+            return Response({
+                'success': True,
+                'data': PurchaseOrderSerializer(updated_po).data,
+                'message': 'Purchase order rejected successfully.'
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'errors': {'detail': str(e)}
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def complete_step(self, request, purchase_order):
+        """Complete a specific workflow step"""
+        # Get step number from request data
+        step_number = request.data.get('step')
+        if not step_number:
+            return Response({
+                'success': False,
+                'errors': {'detail': 'Step number is required.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            step_number = int(step_number)
+            
+            # Check if the step exists
+            if not purchase_order.route_steps.filter(step=step_number).exists():
+                return Response({
+                    'success': False,
+                    'errors': {'detail': f'Step {step_number} does not exist for this purchase order.'}
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            # Complete the step
+            updated_po = POWorkflow.complete_step(purchase_order, step_number, request.user)
+            
+            return Response({
+                'success': True,
+                'data': PurchaseOrderSerializer(updated_po).data,
+                'message': f'Step {step_number} completed successfully.'
+            })
+        except ValueError:
+            return Response({
+                'success': False,
+                'errors': {'detail': 'Invalid step number.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
                 'success': False,
                 'errors': {'detail': str(e)}
             }, status=status.HTTP_400_BAD_REQUEST)
