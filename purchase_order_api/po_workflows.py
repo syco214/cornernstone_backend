@@ -5,7 +5,7 @@ class POWorkflow:
     """
     Handles purchase order workflow operations
     """
-    WORKFLOW_STEPS = [
+    INITIAL_WORKFLOW_STEPS = [
         (1, "Detailed Review", True),
         (2, "PO Approval", True),
         (3, "For DP", True),
@@ -22,7 +22,7 @@ class POWorkflow:
         purchase_order.route_steps.all().delete()
         
         # Create new steps
-        for step_num, task, is_required in cls.WORKFLOW_STEPS:
+        for step_num, task, is_required in cls.INITIAL_WORKFLOW_STEPS:
             PurchaseOrderRoute.objects.create(
                 purchase_order=purchase_order,
                 step=step_num,

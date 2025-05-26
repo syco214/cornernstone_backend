@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import PurchaseOrderView, PurchaseOrderWorkflowView
+from .views import PurchaseOrderView, PurchaseOrderWorkflowView, PurchaseOrderRouteView
 
 app_name = 'purchase_order_api'
 
@@ -10,4 +10,5 @@ urlpatterns = [
     path('<int:pk>/approve/', PurchaseOrderWorkflowView.as_view(), {'action': 'approve'}, name='po-approve'),
     path('<int:pk>/reject/', PurchaseOrderWorkflowView.as_view(), {'action': 'reject'}, name='po-reject'),
     path('<int:pk>/complete_step/', PurchaseOrderWorkflowView.as_view(), {'action': 'complete_step'}, name='po-complete-step'),
+    path('<int:po_id>/route/', PurchaseOrderRouteView.as_view(), name='purchase-order-route'),
 ]

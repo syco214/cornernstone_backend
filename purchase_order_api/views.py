@@ -8,8 +8,8 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
-from .models import PurchaseOrder
-from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer
+from .models import PurchaseOrder, PurchaseOrderRoute
+from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer, PurchaseOrderRouteSerializer
 from django.core.exceptions import FieldDoesNotExist
 from .po_workflows import POWorkflow
 class PurchaseOrderView(APIView, PageNumberPagination):
@@ -370,3 +370,28 @@ class PurchaseOrderWorkflowView(APIView):
                 'success': False,
                 'errors': {'detail': str(e)}
             }, status=status.HTTP_400_BAD_REQUEST)
+
+class PurchaseOrderRouteView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, po_id):
+        """Get route steps for a specific purchase order"""
+        purchase_order = get_object_or_404(PurchaseOrder, pk=po_id)
+        
+        # Get the route steps for this purchase order
+        route_steps = PurchaseOrderRoute.objects.filter(purchase_order=purchase_order)
+        
+        # Create steps if they don't exist
+        if not route_steps.exists():
+            # Initialize the workflow
+            POWorkflow.initialize_workflow(purchase_order)
+            # Refresh the queryset
+            route_steps = PurchaseOrderRoute.objects.filter(purchase_order=purchase_order)
+        
+        # Serialize the data
+        serializer = PurchaseOrderRouteSerializer(route_steps, many=True)
+        
+        return Response({
+            'success': True,
+            'data': serializer.data
+        })
