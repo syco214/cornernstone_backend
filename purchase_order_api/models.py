@@ -3,21 +3,20 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 from django.db.models import Sum, F, ExpressionWrapper, DecimalField
-from admin_api.models import Supplier, Inventory
+from admin_api.models import Supplier, Inventory, USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS
 from decimal import Decimal
+from django.contrib.postgres.fields import ArrayField
 
 class PurchaseOrder(models.Model):
     STATUS_CHOICES = [
         ('draft', 'Draft'),
-        ('pending_approval', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('processing', 'Processing'), # Order sent to supplier
-        ('partially_received', 'Partially Received'),
-        ('fully_received', 'Fully Received'),
-        ('completed', 'Completed'), # All items received and invoiced
+        ('pending_approval', 'Pending PO Approval'),
+        ('for_dp', 'For Down Payment'),
+        ('pending_dp_approval', 'Pending DP Approval'),
+        ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
     ]
+
     CURRENCY_CHOICES = [ # Consistent with Quotation
         ('USD', 'USD'),
         ('EUR', 'EURO'), # Corrected to EUR from EURO for consistency if needed
@@ -277,6 +276,20 @@ class PurchaseOrderRoute(models.Model):
     is_completed = models.BooleanField(default=False)
     is_required = models.BooleanField(default=True)  # Is this step required before proceeding
     task = models.TextField(blank=True)
+    access = models.CharField(
+        max_length=50,
+        choices=[(option, option.replace('_', ' ').title()) for option in USER_ACCESS_OPTIONS],
+        default='purchase_orders',
+        help_text='User role/permission required to complete this step'
+    )
+    roles = ArrayField(
+        models.CharField(
+            max_length=20,
+            choices=[(role, role.title()) for role in USER_ROLE_OPTIONS]
+        ),
+        default=list(['admin', 'supervisor']),
+        help_text='User roles that can complete this step'
+    )
     completed_at = models.DateTimeField(null=True, blank=True)
     completed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -299,3 +312,13 @@ class PurchaseOrderRoute(models.Model):
         self.completed_at = timezone.now()
         self.completed_by = user
         self.save()
+
+class PurchaseOrderDownPayment(models.Model):
+    """Model to track purchase order down payments"""
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='down_payments')
+    amount_paid = models.DecimalField(max_digits=15, decimal_places=2)
+    payment_slip = models.FileField(upload_to='po_payment_slips/', null=True, blank=True)
+    remarks = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"DP for PO {self.purchase_order.po_number}: {self.amount_paid}"

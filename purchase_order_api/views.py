@@ -7,11 +7,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import PurchaseOrder, PurchaseOrderRoute
-from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer, PurchaseOrderRouteSerializer
+from .models import PurchaseOrder, PurchaseOrderRoute, PurchaseOrderDownPayment
+from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer, PurchaseOrderRouteSerializer, PurchaseOrderDownPaymentSerializer
 from django.core.exceptions import FieldDoesNotExist
 from .po_workflows import POWorkflow
+
 class PurchaseOrderView(APIView, PageNumberPagination):
     permission_classes = [IsAuthenticated]
 
@@ -233,143 +235,134 @@ class PurchaseOrderView(APIView, PageNumberPagination):
 
 class PurchaseOrderWorkflowView(APIView):
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
-    def post(self, request, pk, action):
-        """Handle workflow actions for purchase orders"""
+    def post(self, request, pk, action=None):
         purchase_order = get_object_or_404(PurchaseOrder, pk=pk)
         
-        if action == 'submit_for_approval':
-            return self.submit_for_approval(request, purchase_order)
-        elif action == 'approve':
-            return self.approve(request, purchase_order)
-        elif action == 'reject':
-            return self.reject(request, purchase_order)
-        elif action == 'complete_step':
-            return self.complete_step(request, purchase_order)
-        else:
-            return Response({
-                'success': False,
-                'errors': {'detail': f'Unknown action: {action}'}
-            }, status=status.HTTP_400_BAD_REQUEST)
-    
-    def submit_for_approval(self, request, purchase_order):
-        """Submit a purchase order for approval"""
-        # Check if the PO is in a valid state for submission
-        if purchase_order.status != 'draft':
+        # Validate the state for each action
+        if action == 'submit_for_approval' and purchase_order.status != 'draft':
             return Response({
                 'success': False,
                 'errors': {'detail': f'Cannot submit PO in {purchase_order.get_status_display()} status. Only draft POs can be submitted.'}
             }, status=status.HTTP_400_BAD_REQUEST)
             
-        try:
-            # Initialize workflow if not already initialized
-            if not purchase_order.route_steps.exists():
-                POWorkflow.initialize_workflow(purchase_order, request.user)
-                
-            # Submit the PO for approval
-            updated_po = POWorkflow.submit_for_approval(purchase_order, request.user)
-            
-            return Response({
-                'success': True,
-                'data': PurchaseOrderSerializer(updated_po).data,
-                'message': 'Purchase order submitted for approval successfully.'
-            })
-        except Exception as e:
-            return Response({
-                'success': False,
-                'errors': {'detail': str(e)}
-            }, status=status.HTTP_400_BAD_REQUEST)
-    
-    def approve(self, request, purchase_order):
-        """Approve a purchase order"""
-        # Check if the PO is in a valid state for approval
-        if purchase_order.status != 'pending_approval':
+        elif action == 'approve_po' and purchase_order.status != 'pending_approval':
             return Response({
                 'success': False,
                 'errors': {'detail': f'Cannot approve PO in {purchase_order.get_status_display()} status. Only pending approval POs can be approved.'}
             }, status=status.HTTP_400_BAD_REQUEST)
             
-        try:
-            # Ensure workflow is initialized
-            if not purchase_order.route_steps.exists():
-                POWorkflow.initialize_workflow(purchase_order, request.user)
-                
-            # Approve the PO
-            updated_po = POWorkflow.approve_po(purchase_order, request.user)
-            
-            return Response({
-                'success': True,
-                'data': PurchaseOrderSerializer(updated_po).data,
-                'message': 'Purchase order approved successfully.'
-            })
-        except Exception as e:
-            return Response({
-                'success': False,
-                'errors': {'detail': str(e)}
-            }, status=status.HTTP_400_BAD_REQUEST)
-    
-    def reject(self, request, purchase_order):
-        """Reject a purchase order"""
-        # Check if the PO is in a valid state for rejection
-        if purchase_order.status != 'pending_approval':
+        elif action == 'reject_po' and purchase_order.status != 'pending_approval':
             return Response({
                 'success': False,
                 'errors': {'detail': f'Cannot reject PO in {purchase_order.get_status_display()} status. Only pending approval POs can be rejected.'}
             }, status=status.HTTP_400_BAD_REQUEST)
             
-        try:
-            # Reject the PO
-            updated_po = POWorkflow.reject_po(purchase_order, request.user)
-            
-            return Response({
-                'success': True,
-                'data': PurchaseOrderSerializer(updated_po).data,
-                'message': 'Purchase order rejected successfully.'
-            })
-        except Exception as e:
+        elif action == 'submit_dp' and purchase_order.status != 'for_dp':
             return Response({
                 'success': False,
-                'errors': {'detail': str(e)}
+                'errors': {'detail': f'Cannot submit down payment for PO in {purchase_order.get_status_display()} status. Only POs in For Down Payment status can have down payments submitted.'}
             }, status=status.HTTP_400_BAD_REQUEST)
-    
-    def complete_step(self, request, purchase_order):
-        """Complete a specific workflow step"""
-        # Get step number from request data
-        step_number = request.data.get('step')
-        if not step_number:
+            
+        elif action == 'approve_dp' and purchase_order.status != 'pending_dp_approval':
             return Response({
                 'success': False,
-                'errors': {'detail': 'Step number is required.'}
+                'errors': {'detail': f'Cannot approve down payment for PO in {purchase_order.get_status_display()} status. Only POs with pending down payments can be approved.'}
             }, status=status.HTTP_400_BAD_REQUEST)
             
-        try:
-            step_number = int(step_number)
+        elif action == 'reject_dp' and purchase_order.status != 'pending_dp_approval':
+            return Response({
+                'success': False,
+                'errors': {'detail': f'Cannot reject down payment for PO in {purchase_order.get_status_display()} status. Only POs with pending down payments can be rejected.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Initialize workflow if needed for actions that require it
+        if action in ['submit_for_approval', 'approve_po'] and not purchase_order.route_steps.exists():
+            POWorkflow.initialize_workflow(purchase_order, request.user)
+        
+        # Handle different workflow actions
+        if action == 'submit_for_approval':
+            purchase_order = POWorkflow.submit_for_approval(purchase_order, request.user)
+            message = "Purchase order submitted for approval successfully"
             
-            # Check if the step exists
-            if not purchase_order.route_steps.filter(step=step_number).exists():
+        elif action == 'approve_po':
+            purchase_order = POWorkflow.approve_po(purchase_order, request.user)
+            message = "Purchase order approved successfully"
+            
+        elif action == 'reject_po':
+            purchase_order = POWorkflow.reject_po(purchase_order, request.user)
+            message = "Purchase order rejected successfully"
+            
+        elif action == 'submit_dp':
+            # Validate the amount_paid field
+            amount_paid = request.data.get('amount_paid')
+            if not amount_paid:
                 return Response({
                     'success': False,
-                    'errors': {'detail': f'Step {step_number} does not exist for this purchase order.'}
+                    'errors': {'amount_paid': ['This field is required.']}
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                amount_paid = float(amount_paid)
+                if amount_paid <= 0:
+                    return Response({
+                        'success': False,
+                        'errors': {'amount_paid': ['Amount must be greater than zero.']}
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'errors': {'amount_paid': ['Invalid amount. Must be a positive number.']}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Handle down payment submission with file upload
+            data = {
+                'amount_paid': amount_paid,
+                'remarks': request.data.get('remarks', ''),
+            }
+            
+            if 'payment_slip' in request.FILES:
+                data['payment_slip'] = request.FILES['payment_slip']
                 
-            # Complete the step
-            updated_po = POWorkflow.complete_step(purchase_order, step_number, request.user)
+            purchase_order, down_payment = POWorkflow.submit_down_payment(purchase_order, data, request.user)
+            
+            # Create response with down payment details
+            dp_serializer = PurchaseOrderDownPaymentSerializer(
+                down_payment,
+                context={'request': request}
+            )
             
             return Response({
                 'success': True,
-                'data': PurchaseOrderSerializer(updated_po).data,
-                'message': f'Step {step_number} completed successfully.'
+                'message': "Down payment submitted successfully",
+                'data': {
+                    'purchase_order': PurchaseOrderSerializer(purchase_order).data,
+                    'down_payment': dp_serializer.data
+                }
             })
-        except ValueError:
+            
+        elif action == 'approve_dp':
+            purchase_order = POWorkflow.approve_down_payment(purchase_order, request.user)
+            message = "Down payment approved successfully"
+            
+        elif action == 'reject_dp':
+            purchase_order = POWorkflow.reject_down_payment(purchase_order, request.user)
+            message = "Down payment rejected successfully"
+            
+        else:
             return Response({
                 'success': False,
-                'errors': {'detail': 'Invalid step number.'}
+                'errors': {'detail': f'Unknown action: {action}'}
             }, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({
-                'success': False,
-                'errors': {'detail': str(e)}
-            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Return updated PO
+        serializer = PurchaseOrderSerializer(purchase_order)
+        return Response({
+            'success': True,
+            'message': message,
+            'data': serializer.data
+        })
 
 class PurchaseOrderRouteView(APIView):
     permission_classes = [IsAuthenticated]

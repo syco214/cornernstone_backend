@@ -1,9 +1,10 @@
 from rest_framework import serializers
 from django.db import transaction
 from .models import (
-    PurchaseOrder, PurchaseOrderItem, PurchaseOrderDiscountCharge, PurchaseOrderPaymentTerm, PurchaseOrderRoute)
+    PurchaseOrder, PurchaseOrderItem, PurchaseOrderDiscountCharge, PurchaseOrderPaymentTerm, PurchaseOrderRoute, PurchaseOrderDownPayment)
 from admin_api.models import Supplier, Inventory
 from django.contrib.auth import get_user_model
+from admin_api.serializers import UserSerializer
 User = get_user_model()
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
@@ -91,13 +92,14 @@ class PurchaseOrderPaymentTermSerializer(serializers.ModelSerializer):
 
 
 class PurchaseOrderRouteSerializer(serializers.ModelSerializer):
-    completed_by_username = serializers.StringRelatedField(source='completed_by', read_only=True)
+    completed_by = UserSerializer(read_only=True)
+    access_display = serializers.CharField(source='get_access_display', read_only=True)
     
     class Meta:
         model = PurchaseOrderRoute
         fields = [
-            'id', 'purchase_order', 'step', 'is_completed', 'is_required',
-            'task', 'completed_at', 'completed_by', 'completed_by_username'
+            'id', 'purchase_order', 'step', 'is_completed', 'is_required', 
+            'task', 'access', 'access_display', 'roles', 'completed_at', 'completed_by'
         ]
         read_only_fields = ['id', 'purchase_order', 'step', 'task', 'is_required']
 
@@ -113,6 +115,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     discounts_charges = PurchaseOrderDiscountChargeSerializer(many=True, read_only=True)
     payment_term = PurchaseOrderPaymentTermSerializer(read_only=True)
     route_steps = PurchaseOrderRouteSerializer(many=True, read_only=True)
+    down_payment = serializers.SerializerMethodField()
 
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     currency_display = serializers.CharField(source='get_currency_display', read_only=True)
@@ -128,9 +131,29 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_username', 'last_modified_by', 'last_modified_by_username',
             'approved_by', 'approved_by_username', 'created_on', 'last_modified_on',
             'po_date', 'expected_delivery_date',
-            'items', 'discounts_charges', 'payment_term', 'route_steps',
+            'items', 'discounts_charges', 'payment_term', 'route_steps', 'down_payment',
         ]
-        read_only_fields = fields # All fields are read-only for this serializer
+        read_only_fields = fields  # All fields are read-only for this serializer
+    
+    def get_down_payment(self, obj):
+        """Get the down payment for this PO if it exists"""
+        down_payment = obj.down_payments.first()
+        if not down_payment:
+            return None
+            
+        # Get request from context to build absolute URL
+        request = self.context.get('request')
+        payment_slip_url = None
+        
+        if down_payment.payment_slip and request:
+            payment_slip_url = request.build_absolute_uri(down_payment.payment_slip.url)
+            
+        return {
+            'id': down_payment.id,
+            'amount_paid': down_payment.amount_paid,
+            'payment_slip': payment_slip_url,
+            'remarks': down_payment.remarks,
+        }
 
 
 class PurchaseOrderCreateUpdateSerializer(serializers.ModelSerializer):
@@ -293,3 +316,17 @@ class PurchaseOrderCreateUpdateSerializer(serializers.ModelSerializer):
         
         instance.update_totals(save_instance=True) # Recalculate and save totals
         return instance
+
+class PurchaseOrderDownPaymentSerializer(serializers.ModelSerializer):
+    payment_slip_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PurchaseOrderDownPayment
+        fields = [
+            'id', 'purchase_order', 'amount_paid', 'payment_slip', 'payment_slip_url','remarks'
+        ]
+    
+    def get_payment_slip_url(self, obj):
+        if obj.payment_slip and 'request' in self.context:
+            return self.context['request'].build_absolute_uri(obj.payment_slip.url)
+        return None
