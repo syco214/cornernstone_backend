@@ -5,6 +5,7 @@ from .models import (
 from admin_api.models import Supplier, Inventory
 from django.contrib.auth import get_user_model
 from admin_api.serializers import UserSerializer
+from django.db.models import Min
 User = get_user_model()
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
@@ -19,7 +20,7 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
             'external_description', 'unit', 'quantity', 'list_price',
             'discount_type', 'discount_value', 'calculated_discount_amount',
             'line_total', 'quantity_received', 'status',
-            'expected_delivery_date', 'notes', 'balance_quantity',
+            'ready_date', 'batch_number', 'notes', 'balance_quantity',
         ]
         read_only_fields = [
             'id', 'purchase_order', 'calculated_discount_amount', 'line_total',
@@ -116,6 +117,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     payment_term = PurchaseOrderPaymentTermSerializer(read_only=True)
     route_steps = PurchaseOrderRouteSerializer(many=True, read_only=True)
     down_payment = serializers.SerializerMethodField()
+    items_by_batch = serializers.SerializerMethodField()
 
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     currency_display = serializers.CharField(source='get_currency_display', read_only=True)
@@ -130,8 +132,9 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'subtotal_amount', 'order_level_discount_charge_amount', 'grand_total_amount',
             'created_by', 'created_by_username', 'last_modified_by', 'last_modified_by_username',
             'approved_by', 'approved_by_username', 'created_on', 'last_modified_on',
-            'po_date', 'expected_delivery_date',
+            'po_date',
             'items', 'discounts_charges', 'payment_term', 'route_steps', 'down_payment',
+            'items_by_batch'
         ]
         read_only_fields = fields  # All fields are read-only for this serializer
     
@@ -155,6 +158,33 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'remarks': down_payment.remarks,
         }
 
+    def get_items_by_batch(self, obj):
+        """Group items by batch number"""
+        batches = {}
+        
+        # Get all items with batch numbers
+        items_with_batch = obj.items.exclude(batch_number__isnull=True).order_by('batch_number')
+        
+        for item in items_with_batch:
+            batch_num = item.batch_number
+            if batch_num not in batches:
+                # Find the earliest ready date for this batch
+                ready_date = obj.items.filter(batch_number=batch_num).aggregate(
+                    Min('ready_date')
+                )['ready_date__min']
+                
+                batches[batch_num] = {
+                    'batch_number': batch_num,
+                    'ready_date': ready_date,
+                    'items': []
+                }
+            
+            # Add item to its batch
+            batches[batch_num]['items'].append(PurchaseOrderItemSerializer(item).data)
+        
+        # Convert dict to list and sort by batch number
+        return [batch_data for _, batch_data in sorted(batches.items())]
+
 
 class PurchaseOrderCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for POST/PUT requests."""
@@ -171,8 +201,7 @@ class PurchaseOrderCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'po_number', 'supplier', 'supplier_type', 'delivery_terms',
             'currency', 'supplier_address', 'country', 'status', 'notes',
-            'po_date', 'expected_delivery_date',
-            'items', 'discounts_charges', 'payment_term',
+            'po_date','items', 'discounts_charges', 'payment_term',
             # Calculated total fields are not included for direct input
         ]
         read_only_fields = ['id', 'po_number'] # po_number is auto-generated

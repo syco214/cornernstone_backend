@@ -1,6 +1,9 @@
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied
-from .models import PurchaseOrder, PurchaseOrderRoute, PurchaseOrderDownPayment
+from .models import PurchaseOrderRoute, PurchaseOrderDownPayment, PurchaseOrderItem
+from decimal import Decimal
+from datetime import datetime
+from django.core.exceptions import ValidationError
 
 class POWorkflow:
     """
@@ -192,7 +195,7 @@ class POWorkflow:
             step4.complete(user)
         
         # Move to the completed status
-        purchase_order.status = 'completed'
+        purchase_order.status = 'confirm_ready_dates'
         purchase_order.save()
         
         return purchase_order
@@ -218,5 +221,175 @@ class POWorkflow:
         # Update PO status back to for_dp
         purchase_order.status = 'for_dp'
         purchase_order.save()
+        
+        return purchase_order
+
+    @classmethod
+    def confirm_ready_dates(cls, purchase_order, data, user=None):
+        # Get the fifth step and check permissions
+        step5 = purchase_order.route_steps.filter(step=5).first()
+        if step5 and not cls.check_user_permission(user, step5.access, step5.roles):
+            raise PermissionDenied("You don't have permission to confirm ready dates")
+        
+        # Process items and validate
+        items_data = data.get('items', [])
+        
+        # Validate total quantities for each original item
+        original_items = {}
+        for item_data in items_data:
+            item_id = item_data.get('item_id')
+            quantity = Decimal(str(item_data.get('quantity', 0)))
+            
+            if item_id not in original_items:
+                try:
+                    original_item = purchase_order.items.get(id=item_id)
+                    original_items[item_id] = {
+                        'original': original_item,
+                        'total_split_quantity': quantity
+                    }
+                except PurchaseOrderItem.DoesNotExist:
+                    raise ValidationError(f"Item with ID {item_id} does not exist in this purchase order")
+            else:
+                original_items[item_id]['total_split_quantity'] += quantity
+        
+        # Check if total quantities match the original items
+        for item_id, item_info in original_items.items():
+            original_quantity = item_info['original'].quantity
+            split_quantity = item_info['total_split_quantity']
+            
+            if split_quantity != original_quantity:
+                raise ValidationError(
+                    f"Total quantity for item {item_id} must equal the original quantity. "
+                    f"Original: {original_quantity}, Submitted: {split_quantity}"
+                )
+        
+        # Process items by ready date
+        items_by_date = {}
+        for item_data in items_data:
+            item_id = item_data.get('item_id')
+            ready_date_str = item_data.get('ready_date')
+            quantity = Decimal(str(item_data.get('quantity', 0)))
+            
+            if not ready_date_str:
+                raise ValidationError("Ready date is required for all items")
+            
+            try:
+                ready_date = datetime.strptime(ready_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                raise ValidationError(f"Invalid date format for {ready_date_str}. Use YYYY-MM-DD")
+            
+            if ready_date not in items_by_date:
+                items_by_date[ready_date] = []
+            
+            items_by_date[ready_date].append({
+                'item_id': item_id,
+                'quantity': quantity
+            })
+        
+        # Check if we have at most 3 ready dates
+        if len(items_by_date) > 3:
+            raise ValidationError("A maximum of 3 different ready dates is allowed")
+        
+        # Clear previous ready dates
+        for item in purchase_order.items.all():
+            if hasattr(item, 'batch_number'):
+                item.batch_number = None
+            item.ready_date = None
+            item.save()
+        
+        # Sort dates and assign batch numbers
+        sorted_dates = sorted(items_by_date.keys())
+        for batch_number, ready_date in enumerate(sorted_dates, 1):
+            # Process items for this batch/ready date
+            for item_data in items_by_date[ready_date]:
+                original_item = original_items[item_data['item_id']]['original']
+                quantity = item_data['quantity']
+                
+                # If this is the only split for this item, update the original
+                if len([i for i in items_data if i['item_id'] == item_data['item_id']]) == 1:
+                    original_item.ready_date = ready_date
+                    original_item.batch_number = batch_number
+                    original_item.save()
+                else:
+                    # Check if this is for an existing split
+                    existing_split = purchase_order.items.filter(
+                        inventory=original_item.inventory,
+                        ready_date=ready_date
+                    ).exclude(id=original_item.id).first()
+                    
+                    if existing_split:
+                        # Update existing split
+                        existing_split.quantity = quantity
+                        existing_split.batch_number = batch_number
+                        existing_split.save()
+                    else:
+                        # Create a new split item
+                        PurchaseOrderItem.objects.create(
+                            purchase_order=purchase_order,
+                            inventory=original_item.inventory,
+                            external_description=original_item.external_description,
+                            unit=original_item.unit,
+                            quantity=quantity,
+                            list_price=original_item.list_price,
+                            discount_type=original_item.discount_type,
+                            discount_value=original_item.discount_value,
+                            ready_date=ready_date,
+                            batch_number=batch_number,
+                            notes=f"Split from item #{original_item.id}"
+                        )
+                        
+                        # Update the original item quantity if it hasn't been assigned a ready date yet
+                        if original_item.ready_date is None:
+                            remaining_quantity = original_item.quantity - quantity
+                            original_item.quantity = remaining_quantity
+                            original_item.save()
+        
+        # Create workflow steps for each batch/ready date
+        cls._create_ready_date_workflow_steps(purchase_order, len(sorted_dates))
+        
+        # Mark the current step as completed
+        if step5 and not step5.is_completed:
+            step5.complete(user)
+        
+        # Update PO status to reflect ready dates confirmed
+        purchase_order.status = 'packing_list_1'
+        purchase_order.save()
+        
+        return purchase_order
+
+    @classmethod
+    def _create_ready_date_workflow_steps(cls, purchase_order, num_batches):
+        """
+        Create workflow steps for each ready date batch
+        """
+        # Get the highest existing step number
+        last_step = purchase_order.route_steps.order_by('-step').first()
+        next_step_number = last_step.step + 1 if last_step else 6  # Start at 6 if no steps exist
+        
+        # Define the step types
+        step_types = [
+            ("Packing List", True, "purchase_orders", ['admin', 'supervisor', 'user']),
+            ("Approve for Import", True, "purchase_orders", ['admin', 'supervisor']),
+            ("Payment", True, "purchase_orders", ['admin', 'supervisor', 'user']),
+            ("Invoice", True, "purchase_orders", ['admin', 'supervisor', 'user'])
+        ]
+        
+        # Create steps for each batch
+        for batch_number in range(1, num_batches + 1):
+            for step_name, is_required, access, roles in step_types:
+                # Simplified task naming: "Packing List 1", "Approve for Import 1", etc.
+                task = f"{step_name} {batch_number}"
+                
+                PurchaseOrderRoute.objects.create(
+                    purchase_order=purchase_order,
+                    step=next_step_number,
+                    task=task,
+                    is_required=is_required,
+                    is_completed=False,
+                    access=access,
+                    roles=roles
+                )
+                
+                next_step_number += 1
         
         return purchase_order

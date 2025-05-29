@@ -13,6 +13,19 @@ class PurchaseOrder(models.Model):
         ('pending_approval', 'Pending PO Approval'),
         ('for_dp', 'For Down Payment'),
         ('pending_dp_approval', 'Pending DP Approval'),
+        ('confirm_ready_dates', 'Confirm Ready Dates'),
+        ('packing_list_1', 'Packing List 1'),
+        ('packing_list_2', 'Packing List 2'),
+        ('packing_list_3', 'Packing List 3'),
+        ('approve_for_import_1', 'Approve for Import 1'),
+        ('approve_for_import_2', 'Approve for Import 2'),
+        ('approve_for_import_3', 'Approve for Import 3'),
+        ('payment_1', 'Payment 1'),
+        ('payment_2', 'Payment 2'),
+        ('payment_3', 'Payment 3'),
+        ('invoice_1', 'Invoice 1'),
+        ('invoice_2', 'Invoice 2'),
+        ('invoice_3', 'Invoice 3'),
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
     ]
@@ -37,7 +50,7 @@ class PurchaseOrder(models.Model):
     supplier_address = models.TextField(blank=True) # Can be pre-filled from Supplier
     country = models.CharField(max_length=100) # Can be pre-filled from Supplier
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='draft')
     notes = models.TextField(blank=True)
 
     # Amounts - these will be calculated
@@ -68,7 +81,6 @@ class PurchaseOrder(models.Model):
     created_on = models.DateTimeField(auto_now_add=True)
     last_modified_on = models.DateTimeField(auto_now=True)
     po_date = models.DateField(default=timezone.now)
-    expected_delivery_date = models.DateField(null=True, blank=True)
 
 
     class Meta:
@@ -163,9 +175,12 @@ class PurchaseOrderItem(models.Model):
     line_total = models.DecimalField(max_digits=15, decimal_places=2, editable=False) # (qty * list_price) - calculated_discount_amount
 
     quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    status = models.CharField(max_length=20, choices=ITEM_STATUS_CHOICES, default='pending')
-    expected_delivery_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=50, choices=ITEM_STATUS_CHOICES, default='pending')
+    ready_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
+
+    batch_number = models.PositiveSmallIntegerField(null=True, blank=True, 
+                                                 help_text="Batch number for grouping items by ready date")
 
     class Meta:
         ordering = ['id'] # Or any other preferred order
@@ -269,6 +284,9 @@ class PurchaseOrderPaymentTerm(models.Model):
     def __str__(self) -> str:
         return f'Payment Terms for PO {self.purchase_order.po_number}'
 
+def default_roles():
+    return ['admin', 'supervisor']
+
 class PurchaseOrderRoute(models.Model):
     """Model to track the workflow/route of a purchase order"""
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='route_steps')
@@ -287,7 +305,7 @@ class PurchaseOrderRoute(models.Model):
             max_length=20,
             choices=[(role, role.title()) for role in USER_ROLE_OPTIONS]
         ),
-        default=list(['admin', 'supervisor']),
+        default=default_roles,  # Using the function we defined above
         help_text='User roles that can complete this step'
     )
     completed_at = models.DateTimeField(null=True, blank=True)

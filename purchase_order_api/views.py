@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -11,7 +12,6 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from .models import PurchaseOrder, PurchaseOrderRoute, PurchaseOrderDownPayment
 from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer, PurchaseOrderRouteSerializer, PurchaseOrderDownPaymentSerializer
-from django.core.exceptions import FieldDoesNotExist
 from .po_workflows import POWorkflow
 
 class PurchaseOrderView(APIView, PageNumberPagination):
@@ -276,6 +276,12 @@ class PurchaseOrderWorkflowView(APIView):
                 'success': False,
                 'errors': {'detail': f'Cannot reject down payment for PO in {purchase_order.get_status_display()} status. Only POs with pending down payments can be rejected.'}
             }, status=status.HTTP_400_BAD_REQUEST)
+            
+        elif action == 'confirm_ready_dates' and purchase_order.status != 'confirm_ready_dates':
+            return Response({
+                'success': False,
+                'errors': {'detail': f'Cannot confirm ready dates for PO in {purchase_order.get_status_display()} status. Only POs in Ready Date Confirmation status can proceed.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Initialize workflow if needed for actions that require it
         if action in ['submit_for_approval', 'approve_po'] and not purchase_order.route_steps.exists():
@@ -349,6 +355,24 @@ class PurchaseOrderWorkflowView(APIView):
         elif action == 'reject_dp':
             purchase_order = POWorkflow.reject_down_payment(purchase_order, request.user)
             message = "Down payment rejected successfully"
+            
+        elif action == 'confirm_ready_dates':
+            # Validate that items array is present in the request
+            if not request.data.get('items'):
+                return Response({
+                    'success': False,
+                    'errors': {'items': ['This field is required.']}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                # Call the workflow method
+                purchase_order = POWorkflow.confirm_ready_dates(purchase_order, request.data, request.user)
+                message = "Ready dates confirmed successfully"
+            except ValidationError as e:
+                return Response({
+                    'success': False,
+                    'errors': {'detail': str(e)}
+                }, status=status.HTTP_400_BAD_REQUEST)
             
         else:
             return Response({

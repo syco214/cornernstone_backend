@@ -12,5 +12,6 @@ urlpatterns = [
     path('<int:pk>/workflow/submit_dp/', PurchaseOrderWorkflowView.as_view(), {'action': 'submit_dp'}, name='po-submit-dp'),
     path('<int:pk>/workflow/approve_dp/', PurchaseOrderWorkflowView.as_view(), {'action': 'approve_dp'}, name='po-approve-dp'),
     path('<int:pk>/workflow/reject_dp/', PurchaseOrderWorkflowView.as_view(), {'action': 'reject_dp'}, name='po-reject-dp'),
+    path('<int:pk>/workflow/confirm_ready_dates/', PurchaseOrderWorkflowView.as_view(), {'action': 'confirm_ready_dates'}, name='po-confirm-ready-dates'),
     path('<int:po_id>/route/', PurchaseOrderRouteView.as_view(), name='purchase-order-route'),
 ]
