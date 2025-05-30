@@ -10,8 +10,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import PurchaseOrder, PurchaseOrderRoute, PurchaseOrderDownPayment
-from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer, PurchaseOrderRouteSerializer, PurchaseOrderDownPaymentSerializer
+from .models import PurchaseOrder, PurchaseOrderRoute, PurchaseOrderDownPayment, PackingList, PaymentDocument, InvoiceDocument
+from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer, PurchaseOrderRouteSerializer, PurchaseOrderDownPaymentSerializer, PackingListSerializer, PaymentDocumentSerializer, InvoiceDocumentSerializer
 from .po_workflows import POWorkflow
 
 class PurchaseOrderView(APIView, PageNumberPagination):
@@ -374,6 +374,178 @@ class PurchaseOrderWorkflowView(APIView):
                     'errors': {'detail': str(e)}
                 }, status=status.HTTP_400_BAD_REQUEST)
             
+        elif action.startswith('submit_packing_list_'):
+            # Extract batch number from action name
+            try:
+                batch_number = int(action.split('_')[-1])
+            except (ValueError, IndexError):
+                return Response({
+                    'success': False,
+                    'errors': {'detail': 'Invalid batch number in action.'}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate file uploads
+            if 'document' not in request.FILES:
+                return Response({
+                    'success': False,
+                    'errors': {'document': ['This field is required.']}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Prepare data
+            data = {
+                'total_weight': request.data.get('total_weight'),
+                'total_packages': request.data.get('total_packages'),
+                'total_volume': request.data.get('total_volume'),
+                'document': request.FILES['document']
+            }
+            
+            try:
+                # Call workflow method
+                packing_list = POWorkflow.submit_packing_list(
+                    purchase_order, batch_number, data, request.user
+                )
+                
+                # Return response
+                serializer = PackingListSerializer(packing_list, context={'request': request})
+                return Response({
+                    'success': True,
+                    'message': f'Packing list for batch {batch_number} submitted successfully',
+                    'data': {
+                        'purchase_order': PurchaseOrderSerializer(purchase_order).data,
+                        'packing_list': serializer.data
+                    }
+                })
+            except ValidationError as e:
+                return Response({
+                    'success': False,
+                    'errors': {'detail': str(e)}
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        elif action.startswith('approve_import_'):
+            try:
+                batch_number = int(action.split('_')[-1])
+            except (ValueError, IndexError):
+                return Response({
+                    'success': False,
+                    'errors': {'detail': 'Invalid batch number in action.'}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Safer approach
+            approve_value = request.data.get('approve', 'false')
+            if isinstance(approve_value, bool):
+                approve = approve_value
+            else:
+                approve = str(approve_value).lower() == 'true'
+            
+            try:
+                # Call workflow method
+                result = POWorkflow.approve_import(
+                    purchase_order, batch_number, approve, request.user
+                )
+                
+                # Return response
+                status_text = 'approved' if approve else 'rejected'
+                response_data = {
+                    'success': True,
+                    'message': f'Import for batch {batch_number} {status_text} successfully',
+                    'data': {
+                        'purchase_order': PurchaseOrderSerializer(purchase_order).data
+                    }
+                }
+                
+                if approve and result:
+                    serializer = PackingListSerializer(result, context={'request': request})
+                    response_data['data']['packing_list'] = serializer.data
+                
+                return Response(response_data)
+            except ValidationError as e:
+                return Response({
+                    'success': False,
+                    'errors': {'detail': str(e)}
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        elif action.startswith('submit_payment_'):
+            try:
+                batch_number = int(action.split('_')[-1])
+            except (ValueError, IndexError):
+                return Response({
+                    'success': False,
+                    'errors': {'detail': 'Invalid batch number in action.'}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate file uploads
+            if 'document' not in request.FILES:
+                return Response({
+                    'success': False,
+                    'errors': {'document': ['This field is required.']}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Prepare data
+            data = {'document': request.FILES['document']}
+            
+            try:
+                # Call workflow method
+                payment = POWorkflow.submit_payment(
+                    purchase_order, batch_number, data, request.user
+                )
+                
+                # Return response
+                serializer = PaymentDocumentSerializer(payment, context={'request': request})
+                return Response({
+                    'success': True,
+                    'message': f'Payment for batch {batch_number} submitted successfully',
+                    'data': {
+                        'purchase_order': PurchaseOrderSerializer(purchase_order).data,
+                        'payment': serializer.data
+                    }
+                })
+            except ValidationError as e:
+                return Response({
+                    'success': False,
+                    'errors': {'detail': str(e)}
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        elif action.startswith('submit_invoice_'):
+            try:
+                batch_number = int(action.split('_')[-1])
+            except (ValueError, IndexError):
+                return Response({
+                    'success': False,
+                    'errors': {'detail': 'Invalid batch number in action.'}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate file uploads
+            if 'document' not in request.FILES:
+                return Response({
+                    'success': False,
+                    'errors': {'document': ['This field is required.']}
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Prepare data
+            data = {'document': request.FILES['document']}
+            
+            try:
+                # Call workflow method
+                invoice = POWorkflow.submit_invoice(
+                    purchase_order, batch_number, data, request.user
+                )
+                
+                # Return response
+                serializer = InvoiceDocumentSerializer(invoice, context={'request': request})
+                return Response({
+                    'success': True,
+                    'message': f'Invoice for batch {batch_number} submitted successfully',
+                    'data': {
+                        'purchase_order': PurchaseOrderSerializer(purchase_order).data,
+                        'invoice': serializer.data
+                    }
+                })
+            except ValidationError as e:
+                return Response({
+                    'success': False,
+                    'errors': {'detail': str(e)}
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
         else:
             return Response({
                 'success': False,

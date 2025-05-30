@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.db import transaction
 from .models import (
-    PurchaseOrder, PurchaseOrderItem, PurchaseOrderDiscountCharge, PurchaseOrderPaymentTerm, PurchaseOrderRoute, PurchaseOrderDownPayment)
+    PurchaseOrder, PurchaseOrderItem, PurchaseOrderDiscountCharge, PurchaseOrderPaymentTerm, PurchaseOrderRoute, PurchaseOrderDownPayment, PackingList, PaymentDocument, InvoiceDocument)
 from admin_api.models import Supplier, Inventory
 from django.contrib.auth import get_user_model
 from admin_api.serializers import UserSerializer
@@ -104,7 +104,37 @@ class PurchaseOrderRouteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'purchase_order', 'step', 'task', 'is_required']
 
+class PackingListSerializer(serializers.ModelSerializer):
+    document_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PackingList
+        fields = [
+            'id',  'batch_number', 'total_weight', 'approved',
+            'total_packages', 'total_volume', 'document', 'document_url',
+        ]
+        read_only_fields = ['id', 'approved']
+    
+    def get_document_url(self, obj):
+        request = self.context.get('request')
+        if obj.document and request is not None:
+            return request.build_absolute_uri(obj.document.url)
+        return None
 
+class PurchaseOrderDownPaymentSerializer(serializers.ModelSerializer):
+    payment_slip_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PurchaseOrderDownPayment
+        fields = [
+            'id', 'purchase_order', 'amount_paid', 'payment_slip', 'payment_slip_url','remarks'
+        ]
+    
+    def get_payment_slip_url(self, obj):
+        if obj.payment_slip and 'request' in self.context:
+            return self.context['request'].build_absolute_uri(obj.payment_slip.url)
+        return None
+    
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     """Serializer for GET requests (read-only detailed view)."""
     created_by_username = serializers.StringRelatedField(source='created_by', read_only=True)
@@ -116,9 +146,9 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     discounts_charges = PurchaseOrderDiscountChargeSerializer(many=True, read_only=True)
     payment_term = PurchaseOrderPaymentTermSerializer(read_only=True)
     route_steps = PurchaseOrderRouteSerializer(many=True, read_only=True)
-    down_payment = serializers.SerializerMethodField()
+    packing_lists = PackingListSerializer(many=True, read_only=True)
     items_by_batch = serializers.SerializerMethodField()
-
+    down_payment = PurchaseOrderDownPaymentSerializer(read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     currency_display = serializers.CharField(source='get_currency_display', read_only=True)
     supplier_type_display = serializers.CharField(source='get_supplier_type_display', read_only=True)
@@ -132,7 +162,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
             'subtotal_amount', 'order_level_discount_charge_amount', 'grand_total_amount',
             'created_by', 'created_by_username', 'last_modified_by', 'last_modified_by_username',
             'approved_by', 'approved_by_username', 'created_on', 'last_modified_on',
-            'po_date',
+            'po_date', 'packing_lists',
             'items', 'discounts_charges', 'payment_term', 'route_steps', 'down_payment',
             'items_by_batch'
         ]
@@ -346,16 +376,30 @@ class PurchaseOrderCreateUpdateSerializer(serializers.ModelSerializer):
         instance.update_totals(save_instance=True) # Recalculate and save totals
         return instance
 
-class PurchaseOrderDownPaymentSerializer(serializers.ModelSerializer):
-    payment_slip_url = serializers.SerializerMethodField()
+class PaymentDocumentSerializer(serializers.ModelSerializer):
+    document_url = serializers.SerializerMethodField()
     
     class Meta:
-        model = PurchaseOrderDownPayment
-        fields = [
-            'id', 'purchase_order', 'amount_paid', 'payment_slip', 'payment_slip_url','remarks'
-        ]
+        model = PaymentDocument
+        fields = ['id', 'purchase_order', 'batch_number', 'document', 'document_url']
+        read_only_fields = ['id']
     
-    def get_payment_slip_url(self, obj):
-        if obj.payment_slip and 'request' in self.context:
-            return self.context['request'].build_absolute_uri(obj.payment_slip.url)
+    def get_document_url(self, obj):
+        request = self.context.get('request')
+        if obj.document and request is not None:
+            return request.build_absolute_uri(obj.document.url)
+        return None
+
+class InvoiceDocumentSerializer(serializers.ModelSerializer):
+    document_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = InvoiceDocument
+        fields = ['id', 'purchase_order', 'batch_number', 'document', 'document_url']
+        read_only_fields = ['id']
+    
+    def get_document_url(self, obj):
+        request = self.context.get('request')
+        if obj.document and request is not None:
+            return request.build_absolute_uri(obj.document.url)
         return None

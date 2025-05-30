@@ -340,3 +340,34 @@ class PurchaseOrderDownPayment(models.Model):
 
     def __str__(self):
         return f"DP for PO {self.purchase_order.po_number}: {self.amount_paid}"
+
+class PackingList(models.Model):
+    purchase_order = models.ForeignKey('PurchaseOrder', on_delete=models.CASCADE, related_name='packing_lists')
+    batch_number = models.PositiveSmallIntegerField()
+    total_weight = models.DecimalField(max_digits=10, decimal_places=2)
+    total_packages = models.PositiveIntegerField()
+    total_volume = models.DecimalField(max_digits=10, decimal_places=2)
+    document = models.FileField(upload_to='packing_lists/')
+    approved = models.BooleanField(null=True, default=None)
+
+    class Meta:
+        unique_together = ('purchase_order', 'batch_number')
+        ordering = ['purchase_order', 'batch_number']
+
+class PaymentDocument(models.Model):
+    purchase_order = models.ForeignKey('PurchaseOrder', on_delete=models.CASCADE, related_name='payment_documents')
+    batch_number = models.PositiveSmallIntegerField()
+    document = models.FileField(upload_to='payment_documents/')
+
+    class Meta:
+        unique_together = ('purchase_order', 'batch_number')
+        ordering = ['purchase_order', 'batch_number']
+
+class InvoiceDocument(models.Model):
+    purchase_order = models.ForeignKey('PurchaseOrder', on_delete=models.CASCADE, related_name='invoice_documents')
+    batch_number = models.PositiveSmallIntegerField()
+    document = models.FileField(upload_to='invoice_documents/')
+
+    class Meta:
+        unique_together = ('purchase_order', 'batch_number')
+        ordering = ['purchase_order', 'batch_number']

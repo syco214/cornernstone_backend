@@ -1,6 +1,6 @@
 from django.utils import timezone
 from django.core.exceptions import PermissionDenied
-from .models import PurchaseOrderRoute, PurchaseOrderDownPayment, PurchaseOrderItem
+from .models import PurchaseOrderRoute, PurchaseOrderDownPayment, PurchaseOrderItem, PackingList, PaymentDocument, InvoiceDocument
 from decimal import Decimal
 from datetime import datetime
 from django.core.exceptions import ValidationError
@@ -392,4 +392,260 @@ class POWorkflow:
                 
                 next_step_number += 1
         
+        # Add a final PO Summary step after all batch-specific steps
+        PurchaseOrderRoute.objects.create(
+            purchase_order=purchase_order,
+            step=next_step_number,
+            task="PO Summary",
+            is_required=True,
+            is_completed=False,
+            access="purchase_orders",
+            roles=['admin', 'supervisor', 'user']
+        )
+        
         return purchase_order
+
+    @classmethod
+    def submit_packing_list(cls, purchase_order, batch_number, data, user=None):
+        """Submit a packing list for a specific batch"""
+        # Find the corresponding route step
+        step = purchase_order.route_steps.filter(
+            task=f"Packing List {batch_number}"
+        ).first()
+        
+        if not step:
+            raise ValidationError(f"No 'Packing List {batch_number}' step found for this purchase order")
+        
+        if step.is_completed:
+            raise ValidationError(f"Packing list for batch {batch_number} has already been submitted")
+        
+        if not cls.check_user_permission(user, step.access, step.roles):
+            raise PermissionDenied("You don't have permission to submit packing lists")
+        
+        # Validate required fields
+        required_fields = ['total_weight', 'total_packages', 'total_volume']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                raise ValidationError(f"{field} is required")
+        
+        # Validate document
+        if 'document' not in data:
+            raise ValidationError("Packing list document is required")
+        
+        # Create the packing list
+        try:
+            packing_list = PackingList.objects.create(
+                purchase_order=purchase_order,
+                batch_number=batch_number,
+                total_weight=Decimal(str(data['total_weight'])),
+                total_packages=int(data['total_packages']),
+                total_volume=Decimal(str(data['total_volume'])),
+                document=data['document']
+            )
+        except Exception as e:
+            raise
+        
+        # Mark the step as completed
+        try:
+            step.complete(user)
+            
+            # Update the purchase order status to the next step
+            purchase_order.status = f"approve_for_import_{batch_number}"
+            purchase_order.save(update_fields=['status'])
+        except Exception as e:
+            raise
+        
+        return packing_list
+
+    @classmethod
+    def approve_import(cls, purchase_order, batch_number, approve, user=None):
+        """Approve or reject the import based on packing list"""
+        # Find the corresponding route step
+        step = purchase_order.route_steps.filter(
+            task=f"Approve for Import {batch_number}"
+        ).first()
+        
+        if not step:
+            raise ValidationError(f"No 'Approve for Import {batch_number}' step found for this purchase order")
+        
+        if step.is_completed:
+            raise ValidationError(f"Import approval for batch {batch_number} has already been completed")
+        
+        if not cls.check_user_permission(user, step.access, step.roles):
+            raise PermissionDenied("You don't have permission to approve imports")
+        
+        # Get the packing list
+        try:
+            packing_list = PackingList.objects.get(purchase_order=purchase_order, batch_number=batch_number)
+        except PackingList.DoesNotExist:
+            raise ValidationError(f"No packing list found for batch {batch_number}")
+        
+        # Approve or reject the packing list
+        if approve:
+            packing_list.approved = True
+            packing_list.save()
+            # Mark the step as completed
+            step.complete(user)
+            
+            # Update the purchase order status to the next step
+            purchase_order.status = f"payment_{batch_number}"
+            purchase_order.save(update_fields=['status'])
+        else:
+            # Delete the packing list if rejected
+            packing_list.delete()
+            
+            # Find the packing list step and mark it as not completed
+            packing_list_step = purchase_order.route_steps.filter(
+                task=f"Packing List {batch_number}"
+            ).first()
+            
+            if packing_list_step:
+                packing_list_step.is_completed = False
+                packing_list_step.completed_at = None
+                packing_list_step.completed_by = None
+                packing_list_step.save()
+                
+                # Reset the status back to packing list for this batch
+                purchase_order.status = f"packing_list_{batch_number}"
+                purchase_order.save(update_fields=['status'])
+        
+        return packing_list if approve else None
+
+    @classmethod
+    def submit_payment(cls, purchase_order, batch_number, data, user=None):
+        """Submit payment document for a specific batch"""
+        # Find the corresponding route step
+        step = purchase_order.route_steps.filter(
+            task=f"Payment {batch_number}"
+        ).first()
+        
+        if not step:
+            raise ValidationError(f"No 'Payment {batch_number}' step found for this purchase order")
+        
+        if step.is_completed:
+            raise ValidationError(f"Payment for batch {batch_number} has already been submitted")
+        
+        if not cls.check_user_permission(user, step.access, step.roles):
+            raise PermissionDenied("You don't have permission to submit payments")
+        
+        # Validate document
+        if 'document' not in data:
+            raise ValidationError("Payment document is required")
+        
+        # Create the payment document
+        payment = PaymentDocument.objects.create(
+            purchase_order=purchase_order,
+            batch_number=batch_number,
+            document=data['document']
+        )
+        
+        # Mark the step as completed
+        step.complete(user)
+        
+        # Update the purchase order status to the next step
+        purchase_order.status = f"invoice_{batch_number}"
+        purchase_order.save(update_fields=['status'])
+        
+        return payment
+
+    @classmethod
+    def submit_invoice(cls, purchase_order, batch_number, data, user=None):
+        """Submit invoice document for a specific batch"""
+        # Find the corresponding route step
+        step = purchase_order.route_steps.filter(
+            task=f"Invoice {batch_number}"
+        ).first()
+        
+        if not step:
+            raise ValidationError(f"No 'Invoice {batch_number}' step found for this purchase order")
+        
+        if step.is_completed:
+            raise ValidationError(f"Invoice for batch {batch_number} has already been submitted")
+        
+        if not cls.check_user_permission(user, step.access, step.roles):
+            raise PermissionDenied("You don't have permission to submit invoices")
+        
+        # Validate document
+        if 'document' not in data:
+            raise ValidationError("Invoice document is required")
+        
+        # Create the invoice document
+        invoice = InvoiceDocument.objects.create(
+            purchase_order=purchase_order,
+            batch_number=batch_number,
+            document=data['document']
+        )
+        
+        # Mark the step as completed
+        step.complete(user)
+        
+        # Determine if this is the last batch or if we need to move to the next batch
+        total_batches = cls.get_total_batches(purchase_order)
+        
+        if batch_number < total_batches:
+            # Move to the next batch
+            next_batch = batch_number + 1
+            purchase_order.status = f"packing_list_{next_batch}"
+        else:
+            # This was the last batch, move to PO Summary
+            purchase_order.status = "po_summary"
+        
+        purchase_order.save(update_fields=['status'])
+        
+        return invoice
+        
+    @classmethod
+    def complete_po_summary(cls, purchase_order, user=None):
+        """Complete the PO summary step and mark the purchase order as completed"""
+        # Find the corresponding route step
+        step = purchase_order.route_steps.filter(
+            task="PO Summary"
+        ).first()
+        
+        if not step:
+            raise ValidationError("No 'PO Summary' step found for this purchase order")
+        
+        if step.is_completed:
+            raise ValidationError("PO Summary has already been completed")
+        
+        if not cls.check_user_permission(user, step.access, step.roles):
+            raise PermissionDenied("You don't have permission to complete the PO summary")
+        
+        # Verify all previous steps are completed
+        incomplete_steps = purchase_order.route_steps.filter(
+            is_completed=False,
+            is_required=True
+        ).exclude(id=step.id)
+        
+        if incomplete_steps.exists():
+            incomplete_tasks = ", ".join([s.task for s in incomplete_steps])
+            raise ValidationError(f"Cannot complete PO summary. The following steps are incomplete: {incomplete_tasks}")
+        
+        # Mark the step as completed
+        step.complete(user)
+        
+        # Update the purchase order status to completed
+        purchase_order.status = "completed"
+        purchase_order.save(update_fields=['status'])
+        
+        return purchase_order
+        
+    @classmethod
+    def get_total_batches(cls, purchase_order):
+        """Helper method to determine the total number of batches for this PO"""
+        # Look for the highest batch number in the route steps
+        batch_steps = purchase_order.route_steps.filter(task__startswith="Packing List ")
+        
+        if not batch_steps.exists():
+            return 0
+            
+        batch_numbers = []
+        for step in batch_steps:
+            # Extract batch number from task name
+            try:
+                batch_number = int(step.task.replace("Packing List ", ""))
+                batch_numbers.append(batch_number)
+            except (ValueError, TypeError):
+                continue
+                
+        return max(batch_numbers) if batch_numbers else 0
