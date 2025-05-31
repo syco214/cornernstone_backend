@@ -139,6 +139,7 @@ class SupplierViewTests(TestCase):
             'addresses': [
                 {
                     'description': 'Main Office',
+                    'country': 'New Country',
                     'address': '456 New Street, New City, New Country'
                 }
             ],
@@ -147,8 +148,8 @@ class SupplierViewTests(TestCase):
                     'contact_person': 'Jane Smith',
                     'position': 'Procurement Officer',
                     'department': 'Procurement',
-                    'mobile_number': '555-987-6543',  # Updated field name
-                    'office_number': '555-987-6544',  # Added required field
+                    'mobile_number': '555-987-6543',
+                    'office_number': '555-987-6544',
                     'email': 'jane@example.com'
                 }
             ],
