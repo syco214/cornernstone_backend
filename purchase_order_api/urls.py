@@ -1,5 +1,11 @@
 from django.urls import path
-from .views import PurchaseOrderView, PurchaseOrderWorkflowView, PurchaseOrderRouteView
+from .views import (
+    PurchaseOrderView, 
+    PurchaseOrderWorkflowView, 
+    PurchaseOrderRouteView,
+    PurchaseOrderItemsTemplateView,
+    PurchaseOrderItemsUploadView,
+)
 
 app_name = 'purchase_order_api'
 
@@ -12,8 +18,12 @@ urlpatterns = [
     path('<int:pk>/workflow/submit_dp/', PurchaseOrderWorkflowView.as_view(), {'action': 'submit_dp'}, name='po-submit-dp'),
     path('<int:pk>/workflow/approve_dp/', PurchaseOrderWorkflowView.as_view(), {'action': 'approve_dp'}, name='po-approve-dp'),
     path('<int:pk>/workflow/reject_dp/', PurchaseOrderWorkflowView.as_view(), {'action': 'reject_dp'}, name='po-reject-dp'),
-    path('<int:pk>/workflow/confirm_ready_dates/', PurchaseOrderWorkflowView.as_view(), {'action': 'confirm_ready_dates'}, name='po-confirm-ready-dates'),
+    path('<int:pk>/workflow/confirm_ready_dates/', PurchaseOrderWorkflowView.as_view(), {'action': 'confirm_ready_dates'}, name='po-confirm-ready-dates'), 
     path('<int:po_id>/route/', PurchaseOrderRouteView.as_view(), name='purchase-order-route'),
+    
+    # Template download and upload
+    path('<int:pk>/items/template/', PurchaseOrderItemsTemplateView.as_view(), name='purchase-order-items-template'),
+    path('<int:pk>/items/upload/', PurchaseOrderItemsUploadView.as_view(), name='purchase-order-items-upload'),
 ]
 
 # Batch specific workflow URLs - examples for each batch number
@@ -39,11 +49,3 @@ for batch_number in range(1, 4):  # Assuming max 3 batches
              {'action': f'submit_invoice_{batch_number}'},
              name=f'submit-invoice-{batch_number}'),
     ]
-
-# PO Summary completion
-urlpatterns += [
-    path('<int:pk>/workflow/complete_po_summary/',
-         PurchaseOrderWorkflowView.as_view(),
-         {'action': 'complete_po_summary'},
-         name='complete-po-summary'),
-]

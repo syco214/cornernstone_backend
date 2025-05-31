@@ -163,8 +163,8 @@ class PurchaseOrderItem(models.Model):
     inventory = models.ForeignKey(Inventory, on_delete=models.PROTECT, related_name='po_items')
     # item_code, brand, external_description, unit can be sourced from inventory
 
-    external_description = models.TextField(blank=True) # Can override inventory's
-    unit = models.CharField(max_length=50, blank=True) # Can override inventory's
+    external_description = models.TextField(blank=True)
+    unit = models.CharField(max_length=50, blank=True)
     quantity = models.DecimalField(max_digits=10, decimal_places=2)
     list_price = models.DecimalField(max_digits=15, decimal_places=2) # Price per unit in PO's currency
 
@@ -202,15 +202,19 @@ class PurchaseOrderItem(models.Model):
 
     def _calculate_totals(self):
         """Calculate line total based on quantity, price and discount."""
+        # Ensure all values are Decimal for consistent calculations
+        quantity = Decimal(str(self.quantity))
+        list_price = Decimal(str(self.list_price))
+        
         # Calculate gross line total (quantity * list_price)
-        gross_line_total = self.quantity * self.list_price
+        gross_line_total = quantity * list_price
         
         # Calculate discount amount
         if self.discount_type == 'percentage' and self.discount_value:
             # Convert percentage to decimal value
             discount_percentage = Decimal(str(self.discount_value)) / Decimal('100')
             self.calculated_discount_amount = gross_line_total * discount_percentage
-        elif self.discount_type == 'amount' and self.discount_value:
+        elif self.discount_type == 'fixed' and self.discount_value:  # Changed from 'amount' to 'fixed'
             # Fixed amount discount
             self.calculated_discount_amount = Decimal(str(self.discount_value))
         else:
@@ -218,7 +222,7 @@ class PurchaseOrderItem(models.Model):
             self.calculated_discount_amount = Decimal('0.00')
         
         # Calculate final line total
-        self.line_total = round(gross_line_total - self.calculated_discount_amount, 2)
+        self.line_total = (gross_line_total - self.calculated_discount_amount).quantize(Decimal('0.01'))
 
     def save(self, *args, **kwargs) -> None:
         if not self.external_description and self.inventory:

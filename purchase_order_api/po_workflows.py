@@ -587,48 +587,18 @@ class POWorkflow:
             next_batch = batch_number + 1
             purchase_order.status = f"packing_list_{next_batch}"
         else:
-            # This was the last batch, move to PO Summary
-            purchase_order.status = "po_summary"
+            # This was the last batch, automatically complete the PO
+            # First, mark the PO Summary step as completed (if it exists)
+            po_summary_step = purchase_order.route_steps.filter(task="PO Summary").first()
+            if po_summary_step and not po_summary_step.is_completed:
+                po_summary_step.complete(user)
+            
+            # Mark the purchase order as completed
+            purchase_order.status = "completed"
         
         purchase_order.save(update_fields=['status'])
         
         return invoice
-        
-    @classmethod
-    def complete_po_summary(cls, purchase_order, user=None):
-        """Complete the PO summary step and mark the purchase order as completed"""
-        # Find the corresponding route step
-        step = purchase_order.route_steps.filter(
-            task="PO Summary"
-        ).first()
-        
-        if not step:
-            raise ValidationError("No 'PO Summary' step found for this purchase order")
-        
-        if step.is_completed:
-            raise ValidationError("PO Summary has already been completed")
-        
-        if not cls.check_user_permission(user, step.access, step.roles):
-            raise PermissionDenied("You don't have permission to complete the PO summary")
-        
-        # Verify all previous steps are completed
-        incomplete_steps = purchase_order.route_steps.filter(
-            is_completed=False,
-            is_required=True
-        ).exclude(id=step.id)
-        
-        if incomplete_steps.exists():
-            incomplete_tasks = ", ".join([s.task for s in incomplete_steps])
-            raise ValidationError(f"Cannot complete PO summary. The following steps are incomplete: {incomplete_tasks}")
-        
-        # Mark the step as completed
-        step.complete(user)
-        
-        # Update the purchase order status to completed
-        purchase_order.status = "completed"
-        purchase_order.save(update_fields=['status'])
-        
-        return purchase_order
         
     @classmethod
     def get_total_batches(cls, purchase_order):

@@ -9,10 +9,16 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+import io
+from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
+from django.http import HttpResponse
+from decimal import Decimal, InvalidOperation
 
-from .models import PurchaseOrder, PurchaseOrderRoute, PurchaseOrderDownPayment, PackingList, PaymentDocument, InvoiceDocument
+from .models import PurchaseOrder, PurchaseOrderRoute, PurchaseOrderDownPayment, PackingList, PaymentDocument, InvoiceDocument, PurchaseOrderItem
 from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateUpdateSerializer, PurchaseOrderRouteSerializer, PurchaseOrderDownPaymentSerializer, PackingListSerializer, PaymentDocumentSerializer, InvoiceDocumentSerializer
 from .po_workflows import POWorkflow
+from admin_api.models import Inventory
 
 class PurchaseOrderView(APIView, PageNumberPagination):
     permission_classes = [IsAuthenticated]
@@ -584,3 +590,171 @@ class PurchaseOrderRouteView(APIView):
             'success': True,
             'data': serializer.data
         })
+
+class PurchaseOrderItemsTemplateView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk=None):
+        """Download an Excel template for bulk uploading purchase order items"""
+        # Verify the purchase order exists
+        purchase_order = get_object_or_404(PurchaseOrder, pk=pk)
+        
+        # Create a new workbook and select the active worksheet
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Items Template"
+        
+        # Add headers
+        headers = ['item_code', 'quantity']
+        for col_num, header in enumerate(headers, 1):
+            col_letter = get_column_letter(col_num)
+            ws[f'{col_letter}1'] = header
+        
+        # Add example row
+        ws['A2'] = 'ABC123'
+        ws['B2'] = 1
+        
+        # Save to a BytesIO object
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Create response
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="purchase_order_{purchase_order.po_number}_items_template.xlsx"'
+        
+        return response
+
+class PurchaseOrderItemsUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk=None):
+        """Upload an Excel file with item codes and quantities to add to the purchase order"""
+        try:
+            purchase_order = get_object_or_404(PurchaseOrder, pk=pk)
+            
+            if 'file' not in request.FILES:
+                return Response(
+                    {'success': False, 'errors': 'No file uploaded'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            file = request.FILES['file']
+            
+            # Check file extension
+            if not (file.name.endswith('.xlsx') or file.name.endswith('.xls')):
+                return Response(
+                    {'success': False, 'errors': 'File must be an Excel file (.xlsx or .xls)'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Process the Excel file
+            try:
+                # Load the workbook
+                wb = load_workbook(filename=io.BytesIO(file.read()))
+                ws = wb.active
+                
+                # Get headers from the first row
+                headers = [cell.value for cell in ws[1]]
+                
+                # Validate required columns
+                required_columns = ['item_code', 'quantity']
+                for col in required_columns:
+                    if col not in headers:
+                        return Response(
+                            {'success': False, 'errors': f'Missing required column: {col}'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                
+                # Get column indices
+                item_code_idx = headers.index('item_code')
+                quantity_idx = headers.index('quantity')
+                
+                # Process each row
+                results = {
+                    'success': True,
+                    'added': 0,
+                    'errors': [],
+                    'total_rows': ws.max_row - 1  # Subtract header row
+                }
+                
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+                    # Validate item_code
+                    item_code = str(row[item_code_idx] or '').strip()
+                    if not item_code:
+                        results['errors'].append(f'Line {row_idx}: Item code is empty')
+                        continue
+                    
+                    # Validate quantity
+                    try:
+                        quantity_value = row[quantity_idx]
+                        if quantity_value is None:
+                            results['errors'].append(f'Line {row_idx}: Quantity is empty')
+                            continue
+                            
+                        # Convert to Decimal instead of float
+                        quantity = Decimal(str(quantity_value))
+                        if quantity <= 0:
+                            results['errors'].append(f'Line {row_idx}: Quantity must be a positive number')
+                            continue
+                    except (ValueError, TypeError, InvalidOperation):
+                        results['errors'].append(f'Line {row_idx}: Invalid quantity format')
+                        continue
+                    
+                    # Find inventory item
+                    try:
+                        inventory = Inventory.objects.get(item_code=item_code)
+                    except Inventory.DoesNotExist:
+                        results['errors'].append(f'Line {row_idx}: Item code "{item_code}" not found')
+                        continue
+                    
+                    # Create purchase order item
+                    try:
+                        # Check if item already exists in this purchase order
+                        existing_item = PurchaseOrderItem.objects.filter(
+                            purchase_order=purchase_order, 
+                            inventory=inventory
+                        ).first()
+                        
+                        if existing_item:
+                            # Update quantity if item already exists
+                            existing_item.quantity = quantity
+                            existing_item.save()
+                        else:
+                            # Create new item
+                            PurchaseOrderItem.objects.create(
+                                purchase_order=purchase_order,
+                                inventory=inventory,
+                                quantity=quantity,
+                                list_price=Decimal(str(inventory.wholesale_price)) if inventory.wholesale_price else Decimal('0.00'),
+                                unit=inventory.unit,
+                                external_description=inventory.external_description
+                            )
+                        
+                        results['added'] += 1
+                    except Exception as e:
+                        results['errors'].append(f'Line {row_idx}: Failed to add item - {str(e)}')
+                
+                # Update purchase order totals
+                purchase_order.update_totals()
+                
+                return Response(results)
+                
+            except Exception as e:
+                import traceback
+                print(traceback.format_exc())
+                return Response(
+                    {'success': False, 'errors': f'Error processing Excel file: {str(e)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return Response(
+                {'success': False, 'errors': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
