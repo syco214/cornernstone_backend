@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView, BrokerView, ForwarderView, InventoryView, InventoryGeneralView, InventoryDescriptionView, CategoryChildrenView, InventoryTemplateView, InventoryUploadView
+from .views import LoginView, UserView, SidebarView, BrandView, CategoryView, WarehouseView, SupplierView, ParentCompanyView, CustomerView, BrokerView, ForwarderView, InventoryView, InventoryGeneralView, InventoryDescriptionView, CategoryChildrenView, InventoryTemplateView, InventoryUploadView, ExchangeRateView
 app_name = 'admin_api'
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
@@ -30,4 +30,5 @@ urlpatterns = [
     path('inventory/<int:pk>/description/', InventoryDescriptionView.as_view(), name='inventory-description-update'),
     path('inventory/download-template/', InventoryTemplateView.as_view(), name='inventory-download-template'),
     path('inventory/upload/', InventoryUploadView.as_view(), name='inventory-upload'),
+    path('exchange-rates/', ExchangeRateView.as_view(), name='exchange-rates'),
 ]

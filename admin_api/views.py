@@ -10,12 +10,14 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 import pandas as pd
 import io
+import requests
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from django.http import HttpResponse
 from rest_framework.parsers import MultiPartParser, FormParser
-
-from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer, Broker, Forwarder, Inventory, ADMIN_ACCESS_OPTIONS
+from decimal import Decimal
+from django.utils import timezone
+from .models import USER_ACCESS_OPTIONS, USER_ROLE_OPTIONS, CustomUser, Brand, Category, Warehouse, Supplier, ParentCompany, Customer, Broker, Forwarder, Inventory, ADMIN_ACCESS_OPTIONS, ExchangeRate
 from .serializers import UserSerializer, SidebarUserSerializer, BrandSerializer, CategorySerializer, CategoryTreeSerializer, WarehouseSerializer, WarehouseCreateUpdateSerializer, SupplierSerializer, SupplierCreateUpdateSerializer, ParentCompanySerializer, ParentCompanyPaymentTermSerializer, ParentCompanyCreateUpdateSerializer, CustomerSerializer, CustomerCreateUpdateSerializer, BrokerSerializer, BrokerCreateUpdateSerializer, ForwarderSerializer, ForwarderCreateUpdateSerializer, InventorySerializer
 
 # Create your views here.
@@ -1992,3 +1994,132 @@ class InventoryDescriptionView(APIView):
                 'success': False,
                 'errors': {'detail': str(e)}
             }, status=status.HTTP_400_BAD_REQUEST)
+
+class ExchangeRateView(APIView):
+    """
+    Exchange Rate API that fetches rates from frankfurter.dev
+    Base currency: PHP (Philippine Peso)
+    Target currencies: USD, EUR, CNY
+    """
+    
+    def get(self, request):
+        try:
+            currencies = ['USD', 'EUR', 'CNY']
+            exchange_rates = {}
+            api_called = False
+            
+            for currency in currencies:
+                # Check if we have a recent rate in the database
+                try:
+                    rate_obj = ExchangeRate.objects.get(currency=currency)
+                    if not rate_obj.is_stale():
+                        # Use cached rate (less than 6 hours old)
+                        exchange_rates[currency] = {
+                            'rate': float(rate_obj.rate),
+                            'last_updated': rate_obj.updated_at.isoformat(),
+                            'source': 'cached'
+                        }
+                        continue
+                except ExchangeRate.DoesNotExist:
+                    rate_obj = None
+                
+                # Fetch from API if rate is stale or doesn't exist
+                try:
+                    # Note: frankfurter.dev doesn't support PHP as base currency directly
+                    # So we'll get EUR to target currency, then PHP to EUR, and calculate
+                    
+                    if currency == 'EUR':
+                        # Get EUR to PHP directly (1 EUR = ? PHP)
+                        api_url = "https://api.frankfurter.app/latest?from=EUR&to=PHP"
+                        response = requests.get(api_url, timeout=10)
+                        response.raise_for_status()
+                        data = response.json()
+                        # This gives us 1 EUR = X PHP
+                        rate = Decimal(str(data['rates']['PHP']))
+                    else:
+                        # For USD and CNY, we need to get EUR to both PHP and target currency
+                        # Then calculate how much PHP for 1 unit of target currency
+                        api_url = f"https://api.frankfurter.app/latest?from=EUR&to=PHP,{currency}"
+                        response = requests.get(api_url, timeout=10)
+                        response.raise_for_status()
+                        data = response.json()
+                        
+                        eur_to_php = Decimal(str(data['rates']['PHP']))
+                        eur_to_currency = Decimal(str(data['rates'][currency]))
+                        
+                        # Calculate how much PHP for 1 unit of target currency
+                        # If 1 EUR = 60 PHP and 1 EUR = 1.2 USD, then 1 USD = 60/1.2 = 50 PHP
+                        rate = eur_to_php / eur_to_currency
+                    
+                    api_called = True
+                    
+                    # Round to 6 decimal places
+                    rate = rate.quantize(Decimal('0.000001'))
+                    
+                    # Save or update in database
+                    if rate_obj:
+                        rate_obj.rate = rate
+                        rate_obj.save()
+                    else:
+                        ExchangeRate.objects.create(currency=currency, rate=rate)
+                    
+                    exchange_rates[currency] = {
+                        'rate': float(rate),
+                        'last_updated': timezone.now().isoformat(),
+                        'source': 'api'
+                    }
+                    
+                except requests.exceptions.RequestException as e:
+                    # If API fails and we have cached data, use it even if stale
+                    if rate_obj:
+                        exchange_rates[currency] = {
+                            'rate': float(rate_obj.rate),
+                            'last_updated': rate_obj.updated_at.isoformat(),
+                            'source': 'cached_fallback'
+                        }
+                    else:
+                        return Response(
+                            {
+                                'success': False, 
+                                'errors': {
+                                    'detail': f'Failed to fetch {currency} rate and no cached data available: {str(e)}'
+                                }
+                            },
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+                except (KeyError, ValueError, TypeError) as e:
+                    if rate_obj:
+                        exchange_rates[currency] = {
+                            'rate': float(rate_obj.rate),
+                            'last_updated': rate_obj.updated_at.isoformat(),
+                            'source': 'cached_fallback'
+                        }
+                    else:
+                        return Response(
+                            {
+                                'success': False, 
+                                'errors': {
+                                    'detail': f'Error parsing exchange rate data for {currency}'
+                                }
+                            },
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'base_currency': 'PHP',
+                    'rates': exchange_rates,
+                    'api_called': api_called,
+                    'timestamp': timezone.now().isoformat()
+                }
+            })
+            
+        except Exception as e:
+            return Response(
+                {
+                    'success': False, 
+                    'errors': {'detail': f'An unexpected error occurred: {str(e)}'}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

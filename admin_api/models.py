@@ -3,6 +3,8 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from datetime import timedelta
 
 # Define admin access options as simple constants
 ADMIN_ACCESS_OPTIONS = [
@@ -557,3 +559,26 @@ class Inventory(models.Model):
         
         if self.sub_level_category and self.sub_level_category.parent != self.subcategory:
             raise ValidationError({'sub_level_category': 'Sub-level category must belong to the selected subcategory.'})
+
+class ExchangeRate(models.Model):
+    CURRENCY_CHOICES = [
+        ('USD', 'US Dollar'),
+        ('EUR', 'Euro'),
+        ('CNY', 'Chinese Yuan'),
+    ]
+    
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, unique=True)
+    rate = models.DecimalField(max_digits=10, decimal_places=6)  # High precision for exchange rates
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-updated_at']
+        db_table = 'admin_exchange_rates'
+    
+    def __str__(self):
+        return f"1 PHP = {self.rate} {self.currency}"
+    
+    def is_stale(self):
+        """Check if the rate is older than 6 hours"""
+        return timezone.now() - self.updated_at > timedelta(hours=6)
