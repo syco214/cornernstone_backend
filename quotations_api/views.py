@@ -789,8 +789,9 @@ class QuotationStatusView(APIView):
             pass  # Allow this transition
         # Only admin/supervisor can approve or reject
         elif current_status == 'for_approval' and new_status in ['approved', 'rejected']:
-            # Check if user is admin or supervisor
-            if not (request.user.is_staff or request.user.groups.filter(name='Supervisor').exists()):
+            # Check if user is admin or supervisor with quotations access
+            if not (request.user.role == 'admin' or 
+                    (request.user.role == 'supervisor' and 'quotations' in request.user.user_access)):
                 return Response({
                     'success': False,
                     'errors': {'detail': 'You do not have permission to approve or reject quotations'}

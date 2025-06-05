@@ -493,8 +493,9 @@ class QuotationStatusUpdateSerializer(serializers.ModelSerializer):
         
         # Check if user has permission for this status change
         if new_status in ['approved', 'rejected']:
-            # Only admin/supervisor can approve or reject
-            if not (user.is_staff or user.groups.filter(name='Supervisor').exists()):
+            # Only admin or supervisor with quotations access can approve or reject
+            if not (user.role == 'admin' or 
+                    (user.role == 'supervisor' and 'quotations' in user.user_access)):
                 raise serializers.ValidationError({
                     'status': 'You do not have permission to approve or reject quotations'
                 })
